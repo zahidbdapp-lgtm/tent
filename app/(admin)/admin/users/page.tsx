@@ -40,6 +40,7 @@ import {
   updateDoc,
   Timestamp,
   serverTimestamp,
+  deleteDoc,
 } from "firebase/firestore";
 import { User, SubscriptionStatus, SubscriptionPlan, PRICING_PLANS } from "@/types";
 import {
@@ -56,6 +57,7 @@ import {
   CreditCard,
   Calendar,
   Eye,
+  Trash2,
 } from "lucide-react";
 import { useAuth } from "@/contexts/auth-context";
 import { Spinner } from "@/components/ui/spinner";
@@ -69,7 +71,7 @@ export default function AdminUsersPage() {
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [actionDialog, setActionDialog] = useState<{
-    type: "activate" | "deactivate" | "extend" | "details" | null;
+    type: "activate" | "deactivate" | "extend" | "details" | "delete" | null;
     plan?: SubscriptionPlan;
   }>({ type: null });
   const [isProcessing, setIsProcessing] = useState(false);
@@ -215,6 +217,22 @@ export default function AdminUsersPage() {
       setSelectedUser(null);
     } catch (error) {
       console.error("Error extending subscription:", error);
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const handleDeleteUser = async () => {
+    if (!selectedUser) return;
+    setIsProcessing(true);
+
+    try {
+      await deleteDoc(doc(db, "users", selectedUser.id));
+      await fetchUsers();
+      setActionDialog({ type: null });
+      setSelectedUser(null);
+    } catch (error) {
+      console.error("Error deleting user:", error);
     } finally {
       setIsProcessing(false);
     }
@@ -514,6 +532,20 @@ export default function AdminUsersPage() {
                                 </DropdownMenuItem>
                               </>
                             )}
+
+                            <DropdownMenuSeparator />
+
+                            {/* Delete User */}
+                            <DropdownMenuItem
+                              onClick={() => {
+                                setSelectedUser(user);
+                                setActionDialog({ type: "delete" });
+                              }}
+                              className="text-destructive"
+                            >
+                              <Trash2 className="mr-2 h-4 w-4" />
+                              ইউজার ডিলিট করুন
+                            </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
                       )}
@@ -727,6 +759,34 @@ export default function AdminUsersPage() {
             >
               {isProcessing ? <Spinner className="mr-2" /> : null}
               Deactivate
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete User Dialog */}
+      <Dialog
+        open={actionDialog.type === "delete"}
+        onOpenChange={() => setActionDialog({ type: null })}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>ইউজার ডিলিট করুন</DialogTitle>
+            <DialogDescription>
+              আপনি কি নিশ্চিত যে {selectedUser?.displayName} ({selectedUser?.email}) কে সম্পূর্ণভাবে ডিলিট করতে চান? এই কাজ আন্ডু করা যাবে না।
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setActionDialog({ type: null })}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleDeleteUser}
+              disabled={isProcessing}
+            >
+              {isProcessing ? <Spinner className="mr-2" /> : null}
+              ডিলিট করুন
             </Button>
           </DialogFooter>
         </DialogContent>
