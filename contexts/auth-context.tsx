@@ -137,45 +137,51 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   ) => {
     if (!auth || !db) throw new Error("Firebase not configured");
-    const { user: newUser } = await createUserWithEmailAndPassword(auth, email, password);
     
-    await updateProfile(newUser, { displayName });
-    
-    // All new users start as "payment_pending" until admin approves
-    await setDoc(doc(db, "users", newUser.uid), {
-      email,
-      displayName,
-      phone,
-      role: "landlord",
-      subscriptionStatus: "payment_pending", // Payment pending until admin approves
-      subscriptionPlan: paymentInfo.plan,
-      subscriptionStartDate: null,
-      subscriptionExpiry: null,
-      paymentMethod: paymentInfo.paymentMethod,
-      paymentNumber: paymentInfo.paymentNumber,
-      paymentTransactionId: paymentInfo.transactionId,
-      paymentAmount: paymentInfo.amount,
-      paymentDate: serverTimestamp(),
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp(),
-    });
+    try {
+      const { user: newUser } = await createUserWithEmailAndPassword(auth, email, password);
+      
+      await updateProfile(newUser, { displayName });
+      
+      // All new users start as "payment_pending" until admin approves
+      await setDoc(doc(db, "users", newUser.uid), {
+        email,
+        displayName,
+        phone,
+        role: "landlord",
+        subscriptionStatus: "payment_pending", // Payment pending until admin approves
+        subscriptionPlan: paymentInfo.plan,
+        subscriptionStartDate: null,
+        subscriptionExpiry: null,
+        paymentMethod: paymentInfo.paymentMethod,
+        paymentNumber: paymentInfo.paymentNumber,
+        paymentTransactionId: paymentInfo.transactionId,
+        paymentAmount: paymentInfo.amount,
+        paymentDate: serverTimestamp(),
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
 
-    // Create a payment request for admin to verify
-    await addDoc(collection(db, "paymentRequests"), {
-      userId: newUser.uid,
-      userEmail: email,
-      userName: displayName,
-      plan: paymentInfo.plan,
-      amount: paymentInfo.amount,
-      paymentMethod: paymentInfo.paymentMethod,
-      transactionId: paymentInfo.transactionId,
-      screenshotUrl: "", // User can upload screenshot later if needed
-      status: "pending",
-      createdAt: serverTimestamp(),
-      processedAt: null,
-      processedBy: null,
-      rejectionReason: null,
-    });
+      // Create a payment request for admin to verify
+      await addDoc(collection(db, "paymentRequests"), {
+        userId: newUser.uid,
+        userEmail: email,
+        userName: displayName,
+        plan: paymentInfo.plan,
+        amount: paymentInfo.amount,
+        paymentMethod: paymentInfo.paymentMethod,
+        transactionId: paymentInfo.transactionId,
+        screenshotUrl: "", // User can upload screenshot later if needed
+        status: "pending",
+        createdAt: serverTimestamp(),
+        processedAt: null,
+        processedBy: null,
+        rejectionReason: null,
+      });
+    } catch (error) {
+      console.error("SignUp error:", error);
+      throw error;
+    }
   };
 
   const signInWithGoogle = async (): Promise<{ needsPaymentInfo?: boolean }> => {

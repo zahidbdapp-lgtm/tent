@@ -80,6 +80,11 @@ export default function AdminPaymentsPage() {
 
   const fetchPayments = async () => {
     try {
+      if (!db) {
+        console.error("Database not initialized");
+        setLoading(false);
+        return;
+      }
       const q = query(collection(db, "paymentRequests"), orderBy("createdAt", "desc"));
       const snapshot = await getDocs(q);
       const paymentsData = snapshot.docs.map((doc) => ({
@@ -95,7 +100,7 @@ export default function AdminPaymentsPage() {
   };
 
   const handleApprove = async () => {
-    if (!selectedPayment || !currentUser) return;
+    if (!selectedPayment || !currentUser || !db) return;
     setIsProcessing(true);
 
     try {
@@ -131,7 +136,7 @@ export default function AdminPaymentsPage() {
   };
 
   const handleReject = async () => {
-    if (!selectedPayment || !currentUser) return;
+    if (!selectedPayment || !currentUser || !db) return;
     setIsProcessing(true);
 
     try {
