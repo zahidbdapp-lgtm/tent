@@ -108,12 +108,14 @@ export default function AdminPaymentsPage() {
 
       // Update user subscription
       const duration = PRICING_PLANS[selectedPayment.plan].duration;
+      const startDate = new Date();
       const expiryDate = new Date();
       expiryDate.setMonth(expiryDate.getMonth() + duration);
 
       await updateDoc(doc(db, "users", selectedPayment.userId), {
         subscriptionStatus: "active",
         subscriptionPlan: selectedPayment.plan,
+        subscriptionStartDate: Timestamp.fromDate(startDate),
         subscriptionExpiry: Timestamp.fromDate(expiryDate),
         updatedAt: serverTimestamp(),
       });

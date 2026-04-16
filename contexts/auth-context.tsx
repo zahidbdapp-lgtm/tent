@@ -13,7 +13,7 @@ import {
   signInWithRedirect,
   getRedirectResult,
 } from "firebase/auth";
-import { doc, getDoc, setDoc, serverTimestamp } from "firebase/firestore";
+import { doc, getDoc, setDoc, serverTimestamp, collection, addDoc } from "firebase/firestore";
 import { auth, db, isFirebaseConfigured } from "@/lib/firebase";
 import { User } from "@/types";
 
@@ -158,6 +158,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       paymentDate: serverTimestamp(),
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
+    });
+
+    // Create a payment request for admin to verify
+    await addDoc(collection(db, "paymentRequests"), {
+      userId: newUser.uid,
+      userEmail: email,
+      userName: displayName,
+      plan: paymentInfo.plan,
+      amount: paymentInfo.amount,
+      paymentMethod: paymentInfo.paymentMethod,
+      transactionId: paymentInfo.transactionId,
+      screenshotUrl: "", // User can upload screenshot later if needed
+      status: "pending",
+      createdAt: serverTimestamp(),
+      processedAt: null,
+      processedBy: null,
+      rejectionReason: null,
     });
   };
 
