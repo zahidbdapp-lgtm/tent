@@ -104,6 +104,7 @@ export default function AdminUsersPage() {
   }, [searchQuery, users, statusFilter]);
 
   const fetchUsers = async () => {
+    if (!db) return;
     try {
       const snapshot = await getDocs(collection(db, "users"));
       const usersData = snapshot.docs.map((doc) => ({
@@ -123,7 +124,7 @@ export default function AdminUsersPage() {
   };
 
   const handleStatusChange = async (newStatus: SubscriptionStatus) => {
-    if (!selectedUser) return;
+    if (!selectedUser || !db) return;
     setIsProcessing(true);
 
     try {
@@ -150,7 +151,7 @@ export default function AdminUsersPage() {
   };
 
   const handleActivateSubscription = async (plan: SubscriptionPlan) => {
-    if (!selectedUser) return;
+    if (!selectedUser || !db) return;
     setIsProcessing(true);
 
     try {
@@ -178,7 +179,7 @@ export default function AdminUsersPage() {
   };
 
   const handleDeactivateSubscription = async () => {
-    if (!selectedUser) return;
+    if (!selectedUser || !db) return;
     setIsProcessing(true);
 
     try {
@@ -198,7 +199,7 @@ export default function AdminUsersPage() {
   };
 
   const handleExtendSubscription = async (months: number) => {
-    if (!selectedUser) return;
+    if (!selectedUser || !db) return;
     setIsProcessing(true);
 
     try {
@@ -223,7 +224,7 @@ export default function AdminUsersPage() {
   };
 
   const handleDeleteUser = async () => {
-    if (!selectedUser) return;
+    if (!selectedUser || !db) return;
     setIsProcessing(true);
 
     try {
