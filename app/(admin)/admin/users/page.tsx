@@ -32,32 +32,25 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { db } from "@/lib/firebase";
-import {
-  collection,
-  getDocs,
-  doc,
-  updateDoc,
-  Timestamp,
-  serverTimestamp,
-  deleteDoc,
-} from "firebase/firestore";
+import { supabase } from "@/lib/supabaseClient";
 import { User, SubscriptionStatus, SubscriptionPlan, PRICING_PLANS } from "@/types";
 import {
   Search,
   MoreHorizontal,
   Shield,
   CheckCircle,
+  AlertTriangle,
+  Ban,
+  Calendar,
+  CreditCard,
+  Edit2,
+  Trash2,
+  X,
+  Loader2,
+  Eye,
   Clock,
-  XCircle,
   UserCheck,
   UserX,
-  Ban,
-  AlertTriangle,
-  CreditCard,
-  Calendar,
-  Eye,
-  Trash2,
 } from "lucide-react";
 import { useAuth } from "@/contexts/auth-context";
 import { Spinner } from "@/components/ui/spinner";
@@ -104,69 +97,115 @@ export default function AdminUsersPage() {
   }, [searchQuery, users, statusFilter]);
 
   const fetchUsers = async () => {
-    if (!db) return;
+    console.log("[fetchUsers] Starting...");
     try {
-      const snapshot = await getDocs(collection(db, "users"));
-      const usersData = snapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
+      console.log("[fetchUsers] Querying users table...");
+      const { data, error, status, statusText } = await supabase
+        .from("users")
+        .select("*")
+        .order("createdAt", { ascending: false });
+
+      console.log("[fetchUsers] Response:", { 
+        dataLength: data?.length, 
+        errorObj: error,
+        errorString: JSON.stringify(error),
+        status,
+        statusText
+      });
+
+      if (error) {
+        console.error("[fetchUsers] Full error details:", {
+          code: error.code,
+          message: error.message,
+          details: error.details,
+          hint: error.hint,
+          status: error.status
+        });
+        throw error;
+      }
+
+      const usersData = (data || []).map(user => ({
+        ...user,
+        // Ensure dates are strings; no conversion needed
       })) as User[];
-      setUsers(usersData.sort((a, b) => {
-        const dateA = a.createdAt?.toDate?.() || new Date(0);
-        const dateB = b.createdAt?.toDate?.() || new Date(0);
-        return dateB.getTime() - dateA.getTime();
-      }));
+
+      console.log("[fetchUsers] Fetched", usersData.length, "users");
+      setUsers(usersData);
     } catch (error) {
-      console.error("Error fetching users:", error);
+      console.error("[fetchUsers] Caught error:", error);
+      console.error("[fetchUsers] Error type:", typeof error);
+      if (error instanceof Error) {
+        console.error("[fetchUsers] Error.name:", error.name);
+        console.error("[fetchUsers] Error.message:", error.message);
+      } else {
+        console.error("[fetchUsers] Not an Error object. Inspecting:");
+        for (let key in error) {
+          console.error(`[fetchUsers] error.${key}:`, error[key]);
+        }
+      }
     } finally {
       setLoading(false);
     }
   };
 
-  const handleStatusChange = async (newStatus: SubscriptionStatus) => {
-    if (!selectedUser || !db) return;
+  const handleStatusChange = async (newStatus: SubscriptionStatus, reason?: string) => {
+    if (!selectedUser) return;
     setIsProcessing(true);
 
     try {
+      const now = new Date().toISOString();
       const updateData: Record<string, unknown> = {
         subscriptionStatus: newStatus,
-        updatedAt: serverTimestamp(),
+        updatedAt: now,
+        rejectionReason: newStatus === "banned" || newStatus === "payment_due" ? reason : null,
       };
-      
-      // If activating, set start date
+
       if (newStatus === "active" && !selectedUser.subscriptionStartDate) {
-        updateData.subscriptionStartDate = serverTimestamp();
+        updateData.subscriptionStartDate = now;
       }
 
-      await updateDoc(doc(db, "users", selectedUser.id), updateData);
+      const { error } = await supabase
+        .from("users")
+        .update(updateData)
+        .eq("id", selectedUser.id);
+
+      if (error) throw error;
 
       await fetchUsers();
       setActionDialog({ type: null });
       setSelectedUser(null);
     } catch (error) {
       console.error("Error updating status:", error);
+      alert("Status পরিবর্তন করতে সমস্যা হয়েছে। আবার চেষ্টা করুন।");
     } finally {
       setIsProcessing(false);
     }
   };
 
   const handleActivateSubscription = async (plan: SubscriptionPlan) => {
-    if (!selectedUser || !db) return;
+    if (!selectedUser) return;
     setIsProcessing(true);
 
     try {
       const duration = PRICING_PLANS[plan].duration;
-      const startDate = new Date();
+      const startDate = new Date().toISOString();
       const expiryDate = new Date();
       expiryDate.setMonth(expiryDate.getMonth() + duration);
+      const expiryIso = expiryDate.toISOString();
 
-      await updateDoc(doc(db, "users", selectedUser.id), {
-        subscriptionStatus: "active" as SubscriptionStatus,
-        subscriptionPlan: plan,
-        subscriptionStartDate: Timestamp.fromDate(startDate),
-        subscriptionExpiry: Timestamp.fromDate(expiryDate),
-        updatedAt: serverTimestamp(),
-      });
+      const { error } = await supabase
+        .from("users")
+        .update({
+          subscriptionStatus: "active",
+          subscriptionPlan: plan,
+          subscriptionStartDate: startDate,
+          subscriptionExpiry: expiryIso,
+          updatedAt: new Date().toISOString(),
+          rejectionReason: null,
+        })
+        .eq("id", selectedUser.id);
+
+      if (error) throw error;
 
       await fetchUsers();
       setActionDialog({ type: null });
@@ -179,14 +218,21 @@ export default function AdminUsersPage() {
   };
 
   const handleDeactivateSubscription = async () => {
-    if (!selectedUser || !db) return;
+    if (!selectedUser) return;
     setIsProcessing(true);
 
     try {
-      await updateDoc(doc(db, "users", selectedUser.id), {
-        subscriptionStatus: "payment_due" as SubscriptionStatus,
-        updatedAt: serverTimestamp(),
-      });
+      const now = new Date().toISOString();
+      const { error } = await supabase
+        .from("users")
+        .update({
+          subscriptionStatus: "payment_due",
+          updatedAt: now,
+          rejectionReason: null,
+        })
+        .eq("id", selectedUser.id);
+
+      if (error) throw error;
 
       await fetchUsers();
       setActionDialog({ type: null });
@@ -199,19 +245,25 @@ export default function AdminUsersPage() {
   };
 
   const handleExtendSubscription = async (months: number) => {
-    if (!selectedUser || !db) return;
+    if (!selectedUser) return;
     setIsProcessing(true);
 
     try {
-      const currentExpiry = selectedUser.subscriptionExpiry?.toDate() || new Date();
+      const currentExpiry = selectedUser.subscriptionExpiry ? new Date(selectedUser.subscriptionExpiry) : new Date();
       const newExpiry = new Date(currentExpiry);
       newExpiry.setMonth(newExpiry.getMonth() + months);
+      const newExpiryIso = newExpiry.toISOString();
 
-      await updateDoc(doc(db, "users", selectedUser.id), {
-        subscriptionExpiry: Timestamp.fromDate(newExpiry),
-        subscriptionStatus: "active" as SubscriptionStatus,
-        updatedAt: serverTimestamp(),
-      });
+      const { error } = await supabase
+        .from("users")
+        .update({
+          subscriptionExpiry: newExpiryIso,
+          subscriptionStatus: "active",
+          updatedAt: new Date().toISOString(),
+        })
+        .eq("id", selectedUser.id);
+
+      if (error) throw error;
 
       await fetchUsers();
       setActionDialog({ type: null });
@@ -224,11 +276,16 @@ export default function AdminUsersPage() {
   };
 
   const handleDeleteUser = async () => {
-    if (!selectedUser || !db) return;
+    if (!selectedUser) return;
     setIsProcessing(true);
 
     try {
-      await deleteDoc(doc(db, "users", selectedUser.id));
+      const { error } = await supabase
+        .from("users")
+        .delete()
+        .eq("id", selectedUser.id);
+      if (error) throw error;
+
       await fetchUsers();
       setActionDialog({ type: null });
       setSelectedUser(null);
@@ -259,9 +316,9 @@ export default function AdminUsersPage() {
     }
   };
 
-  const formatDate = (timestamp: Timestamp | null | undefined) => {
-    if (!timestamp?.toDate) return "-";
-    return new Date(timestamp.toDate()).toLocaleDateString("bn-BD", {
+  const formatDate = (dateString: string | null | undefined) => {
+    if (!dateString) return "-";
+    return new Date(dateString).toLocaleDateString("bn-BD", {
       year: "numeric",
       month: "short",
       day: "numeric",
@@ -434,66 +491,64 @@ export default function AdminUsersPage() {
                             
                             <DropdownMenuSeparator />
                             
-                            {/* Status Change Submenu */}
-                            <DropdownMenuSub>
-                              <DropdownMenuSubTrigger>
-                                <Shield className="mr-2 h-4 w-4" />
-                                Status পরিবর্তন
-                              </DropdownMenuSubTrigger>
-                              <DropdownMenuSubContent>
-                                <DropdownMenuItem
-                                  onClick={() => {
-                                    setSelectedUser(user);
-                                    handleStatusChange("demo");
-                                  }}
-                                  disabled={user.subscriptionStatus === "demo"}
-                                >
-                                  <Eye className="mr-2 h-4 w-4 text-blue-500" />
-                                  Demo
-                                </DropdownMenuItem>
-                                <DropdownMenuItem
-                                  onClick={() => {
-                                    setSelectedUser(user);
-                                    handleStatusChange("active");
-                                  }}
-                                  disabled={user.subscriptionStatus === "active"}
-                                >
-                                  <CheckCircle className="mr-2 h-4 w-4 text-success" />
-                                  Active
-                                </DropdownMenuItem>
-                                <DropdownMenuItem
-                                  onClick={() => {
-                                    setSelectedUser(user);
-                                    handleStatusChange("payment_pending");
-                                  }}
-                                  disabled={user.subscriptionStatus === "payment_pending"}
-                                >
-                                  <Clock className="mr-2 h-4 w-4 text-warning" />
-                                  Payment Pending
-                                </DropdownMenuItem>
-                                <DropdownMenuItem
-                                  onClick={() => {
-                                    setSelectedUser(user);
-                                    handleStatusChange("payment_due");
-                                  }}
-                                  disabled={user.subscriptionStatus === "payment_due"}
-                                >
-                                  <AlertTriangle className="mr-2 h-4 w-4 text-orange-500" />
-                                  Payment Due
-                                </DropdownMenuItem>
-                                <DropdownMenuItem
-                                  onClick={() => {
-                                    setSelectedUser(user);
-                                    handleStatusChange("banned");
-                                  }}
-                                  disabled={user.subscriptionStatus === "banned"}
-                                  className="text-destructive"
-                                >
-                                  <Ban className="mr-2 h-4 w-4" />
-                                  Banned
-                                </DropdownMenuItem>
-                              </DropdownMenuSubContent>
-                            </DropdownMenuSub>
+                            {/* Status Change Options */}
+                            <DropdownMenuItem
+                              onClick={() => {
+                                setSelectedUser(user);
+                                handleStatusChange("demo");
+                              }}
+                              disabled={user.subscriptionStatus === "demo"}
+                            >
+                              <Eye className="mr-2 h-4 w-4 text-blue-500" />
+                              Demo
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={() => {
+                                setSelectedUser(user);
+                                handleStatusChange("active");
+                              }}
+                              disabled={user.subscriptionStatus === "active"}
+                            >
+                              <CheckCircle className="mr-2 h-4 w-4 text-success" />
+                              Active
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={() => {
+                                setSelectedUser(user);
+                                handleStatusChange("payment_pending");
+                              }}
+                              disabled={user.subscriptionStatus === "payment_pending"}
+                            >
+                              <Clock className="mr-2 h-4 w-4 text-warning" />
+                              Payment Pending
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={() => {
+                                const reason = window.prompt("Payment Due এর কারণ লিখুন (ইউজার দেখবে):");
+                                if (reason !== null) {
+                                  setSelectedUser(user);
+                                  handleStatusChange("payment_due", reason);
+                                }
+                              }}
+                              disabled={user.subscriptionStatus === "payment_due"}
+                            >
+                              <AlertTriangle className="mr-2 h-4 w-4 text-orange-500" />
+                              Payment Due
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={() => {
+                                const reason = window.prompt("Banned এর কারণ লিখুন (ইউজার দেখবে):");
+                                if (reason !== null) {
+                                  setSelectedUser(user);
+                                  handleStatusChange("banned", reason);
+                                }
+                              }}
+                              disabled={user.subscriptionStatus === "banned"}
+                              className="text-destructive"
+                            >
+                              <Ban className="mr-2 h-4 w-4" />
+                              Banned
+                            </DropdownMenuItem>
 
                             <DropdownMenuSeparator />
 

@@ -107,7 +107,7 @@ export async function generateReceiptPDF(data: ReceiptData) {
   doc.setFont("helvetica", "normal");
   doc.text(`Billing Month: ${formatMonth(invoice.month)}`, margins.left, yPosition);
   yPosition += 6;
-  doc.text(`Due Date: ${invoice.dueDate.toDate().toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" })}`, margins.left, yPosition);
+  doc.text(`Due Date: ${new Date(invoice.dueDate).toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" })}`, margins.left, yPosition);
   yPosition += 10;
 
   // Invoice Items Table

@@ -8,13 +8,9 @@ Go to: **Site settings → Build & deploy → Environment**
 
 Add the following environment variables from `.env.example`:
 
-```
-NEXT_PUBLIC_FIREBASE_API_KEY = YOUR_VALUE
-NEXT_PUBLIC_FIREBASE_APP_ID = YOUR_VALUE
-NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN = YOUR_VALUE
-NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID = YOUR_VALUE
-NEXT_PUBLIC_FIREBASE_PROJECT_ID = YOUR_VALUE
-NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET = YOUR_VALUE
+ ```
+NEXT_PUBLIC_SUPABASE_URL = YOUR_VALUE
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY = YOUR_VALUE
 VERCEL_WEB_ANALYTICS_ID = YOUR_VALUE
 ```
 
@@ -48,4 +44,4 @@ Connect your Git repository to Netlify and push your code. Netlify will automati
 If build fails:
 1. Check Netlify Build logs
 2. Verify all NEXT_PUBLIC_* variables are set
-3. Ensure Firebase config is correct
+3. Ensure Supabase config is correct

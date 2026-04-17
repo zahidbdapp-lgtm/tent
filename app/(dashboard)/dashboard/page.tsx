@@ -1,8 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { collection, query, where, getDocs } from "firebase/firestore";
-import { db } from "@/lib/firebase";
+import { supabase } from "@/lib/supabaseClient";
 import { useAuth } from "@/contexts/auth-context";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -19,121 +18,104 @@ import {
 import Link from "next/link";
 
 export default function DashboardPage() {
-  const { user, isDemoUser, isAdmin } = useAuth();
+  const { userData, isDemoUser, isAdmin } = useAuth();
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [recentInvoices, setRecentInvoices] = useState<Invoice[]>([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    if (!user) return;
+   useEffect(() => {
+     if (!user) return;
 
-    const fetchDashboardData = async () => {
-      try {
-        // For demo users (non-subscribers), show demo data
-        if (isDemoUser && !isAdmin) {
-          setStats(demoDashboardStats);
-          setRecentInvoices(
-            demoInvoices
-              .sort((a, b) => b.createdAt.toMillis() - a.createdAt.toMillis())
-              .slice(0, 5)
-          );
-          setLoading(false);
-          return;
-        }
+     const fetchDashboardData = async () => {
+       try {
+         // For demo users (non-subscribers), show demo data
+         if (isDemoUser && !isAdmin) {
+           setStats(demoDashboardStats);
+           setRecentInvoices(
+             demoInvoices
+               .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+               .slice(0, 5)
+           );
+           setLoading(false);
+           return;
+         }
 
-        // For paid users, fetch real data
-        if (!db) {
-          setLoading(false);
-          return;
-        }
+         // For paid users, fetch real data
+         // Fetch properties
+         const { data: properties, error: propertiesError } = await supabase
+           .from("properties")
+           .select("*")
+           .eq("ownerId", userData.id);
 
-        // Fetch properties
-        const propertiesQuery = query(
-          collection(db, "properties"),
-          where("ownerId", "==", user.uid)
-        );
-        const propertiesSnapshot = await getDocs(propertiesQuery);
-        const properties = propertiesSnapshot.docs.map((doc) => ({
-          id: doc.id,
-          ...doc.data(),
-        })) as Property[];
+         if (propertiesError) throw propertiesError;
 
-        // Fetch tenants
-        const tenantsQuery = query(
-          collection(db, "tenants"),
-          where("ownerId", "==", user.uid)
-        );
-        const tenantsSnapshot = await getDocs(tenantsQuery);
-        const tenants = tenantsSnapshot.docs.map((doc) => ({
-          id: doc.id,
-          ...doc.data(),
-        })) as Tenant[];
+         // Fetch tenants
+         const { data: tenants, error: tenantsError } = await supabase
+           .from("tenants")
+           .select("*")
+           .eq("ownerId", userData.id);
 
-        // Fetch invoices
-        const invoicesQuery = query(
-          collection(db, "invoices"),
-          where("ownerId", "==", user.uid)
-        );
-        const invoicesSnapshot = await getDocs(invoicesQuery);
-        const invoices = invoicesSnapshot.docs.map((doc) => ({
-          id: doc.id,
-          ...doc.data(),
-        })) as Invoice[];
+         if (tenantsError) throw tenantsError;
 
-        // Fetch tickets
-        const ticketsQuery = query(
-          collection(db, "tickets"),
-          where("ownerId", "==", user.uid)
-        );
-        const ticketsSnapshot = await getDocs(ticketsQuery);
-        const tickets = ticketsSnapshot.docs.map((doc) => ({
-          id: doc.id,
-          ...doc.data(),
-        })) as TicketType[];
+         // Fetch invoices
+         const { data: invoices, error: invoicesError } = await supabase
+           .from("invoices")
+           .select("*")
+           .eq("ownerId", userData.id);
 
-        // Calculate stats
-        const totalRevenue = invoices
-          .filter((inv) => inv.status === "paid")
-          .reduce((acc, inv) => acc + inv.paidAmount, 0);
+         if (invoicesError) throw invoicesError;
 
-        const pendingPayments = invoices
-          .filter((inv) => inv.status === "unpaid" || inv.status === "partial")
-          .reduce((acc, inv) => acc + inv.dueAmount, 0);
+         // Fetch tickets
+         const { data: tickets, error: ticketsError } = await supabase
+           .from("tickets")
+           .select("*")
+           .eq("ownerId", userData.id);
 
-        const overdueInvoices = invoices.filter(
-          (inv) =>
-            inv.status !== "paid" &&
-            inv.dueDate.toDate() < new Date()
-        ).length;
+         if (ticketsError) throw ticketsError;
 
-        const openTickets = tickets.filter(
-          (t) => t.status === "open" || t.status === "in-progress"
-        ).length;
+         // Calculate stats
+         const totalRevenue = invoices
+           .filter((inv) => inv.status === "paid")
+           .reduce((acc, inv) => acc + inv.paidAmount, 0);
 
-        setStats({
-          totalProperties: properties.length,
-          totalTenants: tenants.filter((t) => t.status === "active").length,
-          totalRevenue,
-          pendingPayments,
-          openTickets,
-          overdueInvoices,
-        });
+         const pendingPayments = invoices
+           .filter((inv) => inv.status === "unpaid" || inv.status === "partial")
+           .reduce((acc, inv) => acc + inv.dueAmount, 0);
 
-        // Get recent invoices
-        setRecentInvoices(
-          invoices
-            .sort((a, b) => b.createdAt.toMillis() - a.createdAt.toMillis())
-            .slice(0, 5)
-        );
-      } catch (error) {
-        console.error("Failed to fetch dashboard data:", error);
-      } finally {
-        setLoading(false);
-      }
-    };
+         const overdueInvoices = invoices.filter(
+           (inv) =>
+             inv.status !== "paid" &&
+             new Date(inv.dueDate) < new Date()
+         ).length;
 
-    fetchDashboardData();
-  }, [user, isDemoUser, isAdmin]);
+         const openTickets = tickets.filter(
+           (t) => t.status === "open" || t.status === "in-progress"
+         ).length;
+
+         setStats({
+           totalProperties: properties?.length || 0,
+           totalTenants: tenants?.filter((t) => t.status === "active").length || 0,
+           totalRevenue,
+           pendingPayments,
+           openTickets,
+           overdueInvoices,
+         });
+
+         // Get recent invoices
+         setRecentInvoices(
+           (invoices || [])
+             .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+             .slice(0, 5)
+         );
+       } catch (error) {
+         console.error("Failed to fetch dashboard data:", error);
+       } finally {
+         setLoading(false);
+       }
+     };
+
+     fetchDashboardData();
+   }, [user, isDemoUser, isAdmin]);
 
   if (loading) {
     return (

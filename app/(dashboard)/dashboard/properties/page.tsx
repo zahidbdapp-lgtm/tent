@@ -1,18 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import {
-  collection,
-  query,
-  where,
-  getDocs,
-  addDoc,
-  updateDoc,
-  deleteDoc,
-  doc,
-  serverTimestamp,
-} from "firebase/firestore";
-import { db } from "@/lib/firebase";
+import { supabase } from "@/lib/supabaseClient";
 import { useAuth } from "@/contexts/auth-context";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -86,19 +75,16 @@ export default function PropertiesPage() {
   });
 
   const fetchProperties = async () => {
-    if (!user || !db) return;
+    if (!user) return;
 
     try {
-      const q = query(
-        collection(db, "properties"),
-        where("ownerId", "==", user.uid)
-      );
-      const snapshot = await getDocs(q);
-      const data = snapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-      })) as Property[];
-      setProperties(data);
+      const { data, error } = await supabase
+        .from("properties")
+        .select("*")
+        .eq("ownerId", user.uid);
+
+      if (error) throw error;
+      setProperties(data || []);
     } catch (error) {
       console.error("Failed to fetch properties:", error);
       toast.error("Failed to load properties");
@@ -134,26 +120,26 @@ export default function PropertiesPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user || !db) return;
+    if (!user) return;
 
     setIsSubmitting(true);
 
     try {
+      const now = new Date().toISOString();
       if (selectedProperty) {
         // Update existing property
-        await updateDoc(doc(db, "properties", selectedProperty.id), {
-          ...formData,
-          updatedAt: serverTimestamp(),
-        });
+        const { error } = await supabase
+          .from("properties")
+          .update({ ...formData, updatedAt: now })
+          .eq("id", selectedProperty.id);
+        if (error) throw error;
         toast.success("Property updated successfully");
       } else {
         // Create new property
-        await addDoc(collection(db, "properties"), {
-          ...formData,
-          ownerId: user.uid,
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp(),
-        });
+        const { error } = await supabase
+          .from("properties")
+          .insert({ ...formData, ownerId: user.uid, createdAt: now, updatedAt: now });
+        if (error) throw error;
         toast.success("Property created successfully");
       }
       setIsDialogOpen(false);
@@ -167,10 +153,14 @@ export default function PropertiesPage() {
   };
 
   const handleDelete = async () => {
-    if (!selectedProperty || !db) return;
+    if (!selectedProperty) return;
 
     try {
-      await deleteDoc(doc(db, "properties", selectedProperty.id));
+      const { error } = await supabase
+        .from("properties")
+        .delete()
+        .eq("id", selectedProperty.id);
+      if (error) throw error;
       toast.success("Property deleted successfully");
       setIsDeleteDialogOpen(false);
       setSelectedProperty(null);

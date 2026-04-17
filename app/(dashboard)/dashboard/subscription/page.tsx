@@ -1,36 +1,30 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState } from "react";
 import { useAuth } from "@/contexts/auth-context";
+import { supabase } from "@/lib/supabaseClient";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { FieldGroup, Field, FieldLabel } from "@/components/ui/field";
 import { Badge } from "@/components/ui/badge";
 import { Spinner } from "@/components/ui/spinner";
-import { 
-  PRICING_PLANS, 
-  SubscriptionPlan, 
-  PaymentMethod,
-  PaymentRequestFormData 
-} from "@/types";
-import { db, storage } from "@/lib/firebase";
-import { collection, addDoc, serverTimestamp } from "firebase/firestore";
-import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import {
   Check,
   CheckCircle,
   CreditCard,
-  Upload,
   AlertCircle,
   Clock,
   Smartphone,
+  Calendar,
+  Phone,
 } from "lucide-react";
+import { PRICING_PLANS, SubscriptionPlan, PaymentMethod } from "@/types";
 
 const paymentMethods: { id: PaymentMethod; name: string; number: string; color: string }[] = [
-  { id: "bkash", name: "bKash", number: "01XXXXXXXXX", color: "bg-[#E2136E]" },
-  { id: "nagad", name: "Nagad", number: "01XXXXXXXXX", color: "bg-[#F6921E]" },
-  { id: "rocket", name: "Rocket", number: "01XXXXXXXXX", color: "bg-[#8B2F89]" },
+  { id: "bkash", name: "bKash", number: "01727132605", color: "bg-[#E2136E]" },
+  { id: "nagad", name: "Nagad", number: "01727132605", color: "bg-[#F6921E]" },
+  { id: "rocket", name: "Rocket", number: "017271326058", color: "bg-[#8B2F89]" },
 ];
 
 export default function SubscriptionPage() {
@@ -38,58 +32,50 @@ export default function SubscriptionPage() {
   const [selectedPlan, setSelectedPlan] = useState<SubscriptionPlan | null>(null);
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<PaymentMethod | null>(null);
   const [transactionId, setTransactionId] = useState("");
-  const [screenshot, setScreenshot] = useState<File | null>(null);
-  const [screenshotPreview, setScreenshotPreview] = useState<string | null>(null);
+  const [paymentDate, setPaymentDate] = useState("");
+  const [paymentNumber, setPaymentNumber] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitSuccess, setSubmitSuccess] = useState(false);
   const [error, setError] = useState("");
-  const fileInputRef = useRef<HTMLInputElement>(null);
-
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      if (file.size > 5 * 1024 * 1024) {
-        setError("Screenshot ফাইল 5MB এর বেশি হতে পারবে না।");
-        return;
-      }
-      setScreenshot(file);
-      setScreenshotPreview(URL.createObjectURL(file));
-      setError("");
-    }
-  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user || !userData || !selectedPlan || !selectedPaymentMethod || !transactionId || !screenshot) {
-      setError("সব তথ্য পূরণ করুন।");
+
+    if (!user) {
+      setError("আপনাকে প্রথমে লগইন করতে হবে।");
       return;
     }
+    if (!userData) {
+      setError("ব্যবহারকারীর তথ্য লোড হচ্ছে। একটু অপেক্ষা করে আবার চেষ্টা করুন।");
+      return;
+    }
+    if (!selectedPlan) {
+      setError("দয়া করে একটি প্যাকেজ সিলেক্ট করুন।");
+      return;
+    }
+    if (!selectedPaymentMethod) {
+      setError("দয়া করে একটি পেমেন্ট মেথড সিলেক্ট করুন।");
+      return;
+    }
+    if (!transactionId.trim()) {
+      setError("Transaction ID দিন।");
+      return;
+    }
+    if (!paymentNumber.trim()) {
+      setError("পেমেন্টের নম্বর দিন।");
+      return;
+    }
+     if (!paymentDate) {
+       setError("পেমেন্টের তারিখ দিন।");
+       return;
+     }
 
     setIsSubmitting(true);
     setError("");
 
     try {
-      // Upload screenshot to Firebase Storage
-      const screenshotRef = ref(
-        storage,
-        `payment-screenshots/${user.uid}/${Date.now()}_${screenshot.name}`
-      );
-      await uploadBytes(screenshotRef, screenshot);
-      const screenshotUrl = await getDownloadURL(screenshotRef);
-
-      // Create payment request
-      const paymentRequest: Omit<PaymentRequestFormData, "screenshotUrl"> & { 
-        screenshotUrl: string;
-        userId: string;
-        userEmail: string;
-        userName: string;
-        amount: number;
-        status: string;
-        createdAt: ReturnType<typeof serverTimestamp>;
-        processedAt: null;
-        processedBy: null;
-        rejectionReason: null;
-      } = {
+      const now = new Date().toISOString();
+      const paymentRequest = {
         userId: user.uid,
         userEmail: user.email || "",
         userName: userData.displayName,
@@ -97,25 +83,32 @@ export default function SubscriptionPage() {
         amount: PRICING_PLANS[selectedPlan].price,
         paymentMethod: selectedPaymentMethod,
         transactionId: transactionId.trim(),
-        screenshotUrl,
+        paymentNumber: paymentNumber.trim(),
+        paymentDate: paymentDate,
+        screenshotUrl: "",
         status: "pending",
-        createdAt: serverTimestamp(),
+        createdAt: now,
         processedAt: null,
         processedBy: null,
         rejectionReason: null,
       };
 
-      await addDoc(collection(db, "paymentRequests"), paymentRequest);
+      const { error } = await supabase
+        .from("payment_requests")
+        .insert(paymentRequest);
+      if (error) throw error;
+      console.log("Payment request submitted");
 
       setSubmitSuccess(true);
       setSelectedPlan(null);
       setSelectedPaymentMethod(null);
       setTransactionId("");
-      setScreenshot(null);
-      setScreenshotPreview(null);
+      setPaymentNumber("");
+      setPaymentDate("");
     } catch (err) {
-      console.error("Payment request error:", err);
-      setError("পেমেন্ট রিকোয়েস্ট পাঠাতে সমস্যা হয়েছে। আবার চেষ্টা করুন।");
+      console.error("Payment submission error:", err);
+      const errorMsg = err instanceof Error ? err.message : "Unknown error";
+      setError(`পেমেন্ট রিকোয়েস্ট পাঠেতে সমস্যা했습니다: ${errorMsg}`);
     } finally {
       setIsSubmitting(false);
     }
@@ -181,12 +174,12 @@ export default function SubscriptionPage() {
                   Plan: {PRICING_PLANS[userData.subscriptionPlan]?.nameBn || userData.subscriptionPlan}
                 </p>
               )}
-              {userData?.subscriptionExpiry && (
-                <p className="text-sm text-muted-foreground flex items-center gap-1">
-                  <Clock className="h-3 w-3" />
-                  Expires: {new Date(userData.subscriptionExpiry.toDate()).toLocaleDateString("bn-BD")}
-                </p>
-              )}
+               {userData?.subscriptionExpiry && (
+                 <p className="text-sm text-muted-foreground flex items-center gap-1">
+                   <Clock className="h-3 w-3" />
+                   Expires: {new Date(userData.subscriptionExpiry).toLocaleDateString("bn-BD")}
+                 </p>
+               )}
             </div>
             {isAdmin && (
               <Badge variant="outline" className="text-xs">
@@ -197,8 +190,8 @@ export default function SubscriptionPage() {
         </CardContent>
       </Card>
 
-      {/* Only show payment form for non-admin demo/expired users */}
-      {!isAdmin && userData?.subscriptionStatus === "demo" && (
+      {/* Show payment form for demo or payment_due users */}
+      {!isAdmin && ["demo", "payment_due"].includes(userData?.subscriptionStatus || "") && (
         <>
           {/* Pricing Plans */}
           <Card>
@@ -293,7 +286,7 @@ export default function SubscriptionPage() {
                 {selectedPaymentMethod && (
                   <div className="bg-muted p-4 rounded-lg mb-6">
                     <p className="font-medium mb-2">পেমেন্ট করার নিয়ম:</p>
-                    <ol className="text-sm text-muted-foreground space-y-1 list-decimal list-inside">
+                    <ol className="text-sm text-muted-foreground space-y-1 list-decimal list-inside mb-4">
                       <li>
                         {paymentMethods.find((m) => m.id === selectedPaymentMethod)?.name} অ্যাপ ওপেন করুন
                       </li>
@@ -313,6 +306,12 @@ export default function SubscriptionPage() {
                       <li>Reference এ আপনার email দিন</li>
                       <li>পেমেন্ট কনফার্ম করুন</li>
                     </ol>
+                    <div className="bg-background border border-primary/30 rounded-lg p-3">
+                      <p className="text-sm font-medium mb-1">এই নাম্বারে টাকা পাঠান:</p>
+                      <p className="text-lg font-bold text-primary">
+                        {paymentMethods.find((m) => m.id === selectedPaymentMethod)?.number}
+                      </p>
+                    </div>
                   </div>
                 )}
               </CardContent>
@@ -322,74 +321,58 @@ export default function SubscriptionPage() {
           {/* Payment Confirmation Form */}
           {selectedPlan && selectedPaymentMethod && (
             <Card>
-              <CardHeader>
-                <CardTitle>পেমেন্ট কনফার্ম করুন</CardTitle>
-                <CardDescription>
-                  পেমেন্ট করার পর Transaction ID ও Screenshot দিন
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <form onSubmit={handleSubmit}>
-                  <FieldGroup>
-                    <Field>
-                      <FieldLabel htmlFor="transactionId">Transaction ID *</FieldLabel>
-                      <Input
-                        id="transactionId"
-                        placeholder="যেমন: 8N7XXXXXX"
-                        value={transactionId}
-                        onChange={(e) => setTransactionId(e.target.value)}
-                        required
-                      />
-                      <p className="text-xs text-muted-foreground mt-1">
-                        {paymentMethods.find((m) => m.id === selectedPaymentMethod)?.name} থেকে পাওয়া
-                        Transaction ID দিন
-                      </p>
-                    </Field>
+               <CardHeader>
+                 <CardTitle>পেমেন্ট কনফার্ম করুন</CardTitle>
+                 <CardDescription>
+                   পেমেন্ট করার পর Transaction ID দিন
+                 </CardDescription>
+               </CardHeader>
+               <CardContent>
+                 <form onSubmit={handleSubmit}>
+                   <FieldGroup>
+                      <Field>
+                        <FieldLabel htmlFor="transactionId">Transaction ID *</FieldLabel>
+                        <Input
+                          id="transactionId"
+                          placeholder="যেমন: 8N7XXXXXX"
+                          value={transactionId}
+                          onChange={(e) => setTransactionId(e.target.value)}
+                          required
+                        />
+                        <p className="text-xs text-muted-foreground mt-1">
+                          {paymentMethods.find((m) => m.id === selectedPaymentMethod)?.name} থেকে পাওয়া
+                          Transaction ID দিন
+                        </p>
+                      </Field>
 
-                    <Field>
-                      <FieldLabel>Payment Screenshot *</FieldLabel>
-                      <div
-                        onClick={() => fileInputRef.current?.click()}
-                        className={`border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition-colors ${
-                          screenshotPreview ? "border-primary" : "border-border hover:border-primary/50"
-                        }`}
-                      >
-                        {screenshotPreview ? (
-                          <div className="space-y-2">
-                            <img
-                              src={screenshotPreview}
-                              alt="Screenshot preview"
-                              className="max-h-48 mx-auto rounded"
-                            />
-                            <p className="text-sm text-muted-foreground">ক্লিক করে অন্য ছবি দিন</p>
-                          </div>
-                        ) : (
-                          <div className="space-y-2">
-                            <Upload className="h-8 w-8 mx-auto text-muted-foreground" />
-                            <p className="text-sm text-muted-foreground">
-                              Screenshot আপলোড করতে ক্লিক করুন
-                            </p>
-                            <p className="text-xs text-muted-foreground">PNG, JPG (Max 5MB)</p>
-                          </div>
-                        )}
-                      </div>
-                      <input
-                        ref={fileInputRef}
-                        type="file"
-                        accept="image/*"
-                        onChange={handleFileChange}
-                        className="hidden"
-                      />
-                    </Field>
+                      <Field>
+                        <FieldLabel htmlFor="paymentNumber">পেমেন্টের নম্বর *</FieldLabel>
+                        <div className="relative">
+                          <Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                          <Input
+                            id="paymentNumber"
+                            type="tel"
+                            placeholder="যেমন: 017XXXXXXXX"
+                            value={paymentNumber}
+                            onChange={(e) => setPaymentNumber(e.target.value)}
+                            className="pl-10"
+                            required
+                            pattern="(01|\\+8801)[3-9][0-9]{8}"
+                          />
+                        </div>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          যে নম্বর থেকে টাকা পাঠিয়েছেন
+                        </p>
+                       </Field>
 
-                    {error && (
-                      <div className="p-3 bg-destructive/10 border border-destructive/20 rounded-lg flex items-center gap-2">
-                        <AlertCircle className="h-4 w-4 text-destructive" />
-                        <p className="text-sm text-destructive">{error}</p>
-                      </div>
-                    )}
+                       {error && (
+                         <div className="p-3 bg-destructive/10 border border-destructive/20 rounded-lg flex items-center gap-2">
+                           <AlertCircle className="h-4 w-4 text-destructive" />
+                           <p className="text-sm text-destructive">{error}</p>
+                         </div>
+                       )}
 
-                    <div className="bg-muted p-4 rounded-lg">
+                     <div className="bg-muted p-4 rounded-lg">
                       <div className="flex justify-between items-center">
                         <span className="font-medium">মোট পেমেন্ট:</span>
                         <span className="text-xl font-bold">৳{PRICING_PLANS[selectedPlan].price}</span>
@@ -400,7 +383,7 @@ export default function SubscriptionPage() {
                       </p>
                     </div>
 
-                    <Button type="submit" className="w-full" disabled={isSubmitting || !screenshot}>
+                    <Button type="submit" className="w-full" disabled={isSubmitting}>
                       {isSubmitting ? <Spinner className="mr-2" /> : null}
                       পেমেন্ট রিকোয়েস্ট পাঠান
                     </Button>

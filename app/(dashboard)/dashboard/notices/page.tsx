@@ -1,19 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import {
-  collection,
-  query,
-  where,
-  getDocs,
-  addDoc,
-  updateDoc,
-  deleteDoc,
-  doc,
-  serverTimestamp,
-  Timestamp,
-} from "firebase/firestore";
-import { db } from "@/lib/firebase";
+import { supabase } from "@/lib/supabaseClient";
 import { useAuth } from "@/contexts/auth-context";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -92,33 +80,27 @@ export default function NoticesPage() {
   const [formData, setFormData] = useState<NoticeFormData>(initialFormData);
 
   const fetchData = async () => {
-    if (!user || !db) return;
+    if (!user) return;
 
     try {
       // Fetch properties
-      const propertiesQuery = query(
-        collection(db, "properties"),
-        where("ownerId", "==", user.uid)
-      );
-      const propertiesSnapshot = await getDocs(propertiesQuery);
-      const propertiesData = propertiesSnapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-      })) as Property[];
-      setProperties(propertiesData);
+      const { data: propertiesData, error: propertiesError } = await supabase
+        .from("properties")
+        .select("*")
+        .eq("ownerId", user.uid);
+
+      if (propertiesError) throw propertiesError;
+      setProperties(propertiesData || []);
 
       // Fetch notices
-      const noticesQuery = query(
-        collection(db, "notices"),
-        where("ownerId", "==", user.uid)
-      );
-      const noticesSnapshot = await getDocs(noticesQuery);
-      const noticesData = noticesSnapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-      })) as Notice[];
-      setNotices(noticesData.sort((a, b) => 
-        b.createdAt.toMillis() - a.createdAt.toMillis()
+      const { data: noticesData, error: noticesError } = await supabase
+        .from("notices")
+        .select("*")
+        .eq("ownerId", user.uid);
+
+      if (noticesError) throw noticesError;
+      setNotices((noticesData || []).sort((a, b) =>
+        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
       ));
     } catch (error) {
       console.error("Failed to fetch data:", error);
@@ -140,7 +122,7 @@ export default function NoticesPage() {
         title: notice.title,
         content: notice.content,
         priority: notice.priority,
-        expiresAt: notice.expiresAt.toDate().toISOString().split("T")[0],
+        expiresAt: notice.expiresAt.split("T")[0],
       });
     } else {
       setSelectedNotice(null);
@@ -151,7 +133,7 @@ export default function NoticesPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user || !db) return;
+    if (!user) return;
 
     if (!formData.propertyId) {
       toast.error("Please select a property");
@@ -161,23 +143,28 @@ export default function NoticesPage() {
     setIsSubmitting(true);
 
     try {
+      const now = new Date().toISOString();
       const noticeData = {
         propertyId: formData.propertyId,
         ownerId: user.uid,
         title: formData.title,
         content: formData.content,
         priority: formData.priority,
-        expiresAt: Timestamp.fromDate(new Date(formData.expiresAt)),
+        expiresAt: formData.expiresAt,
       };
 
       if (selectedNotice) {
-        await updateDoc(doc(db, "notices", selectedNotice.id), noticeData);
+        const { error } = await supabase
+          .from("notices")
+          .update(noticeData)
+          .eq("id", selectedNotice.id);
+        if (error) throw error;
         toast.success("Notice updated successfully");
       } else {
-        await addDoc(collection(db, "notices"), {
-          ...noticeData,
-          createdAt: serverTimestamp(),
-        });
+        const { error } = await supabase
+          .from("notices")
+          .insert({ ...noticeData, createdAt: now });
+        if (error) throw error;
         toast.success("Notice created successfully");
       }
 
@@ -192,10 +179,14 @@ export default function NoticesPage() {
   };
 
   const handleDelete = async () => {
-    if (!selectedNotice || !db) return;
+    if (!selectedNotice) return;
 
     try {
-      await deleteDoc(doc(db, "notices", selectedNotice.id));
+      const { error } = await supabase
+        .from("notices")
+        .delete()
+        .eq("id", selectedNotice.id);
+      if (error) throw error;
       toast.success("Notice deleted successfully");
       setIsDeleteDialogOpen(false);
       setSelectedNotice(null);
@@ -225,8 +216,8 @@ export default function NoticesPage() {
     );
   };
 
-  const isExpired = (expiresAt: Timestamp) => {
-    return expiresAt.toDate() < new Date();
+  const isExpired = (expiresAt: string) => {
+    return new Date(expiresAt) < new Date();
   };
 
   if (loading) {
@@ -415,12 +406,12 @@ export default function NoticesPage() {
                 <p className="text-sm text-muted-foreground whitespace-pre-wrap mb-4">
                   {notice.content}
                 </p>
-                <div className="flex items-center justify-between text-xs text-muted-foreground">
-                  <span>
-                    {isExpired(notice.expiresAt)
-                      ? "Expired"
-                      : `Expires ${notice.expiresAt.toDate().toLocaleDateString()}`}
-                  </span>
+                 <div className="flex items-center justify-between text-xs text-muted-foreground">
+                   <span>
+                     {isExpired(notice.expiresAt)
+                       ? "Expired"
+                       : `Expires ${new Date(notice.expiresAt).toLocaleDateString()}`}
+                   </span>
                   <div className="flex gap-1">
                     <Button
                       variant="ghost"

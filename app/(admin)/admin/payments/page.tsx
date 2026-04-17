@@ -16,17 +16,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
-import { db } from "@/lib/firebase";
-import {
-  collection,
-  getDocs,
-  doc,
-  updateDoc,
-  Timestamp,
-  serverTimestamp,
-  query,
-  orderBy,
-} from "firebase/firestore";
+import { supabase } from "@/lib/supabaseClient";
 import { PaymentRequest, PRICING_PLANS } from "@/types";
 import { useAuth } from "@/contexts/auth-context";
 import { Spinner } from "@/components/ui/spinner";
@@ -80,18 +70,14 @@ export default function AdminPaymentsPage() {
 
   const fetchPayments = async () => {
     try {
-      if (!db) {
-        console.error("Database not initialized");
-        setLoading(false);
-        return;
-      }
-      const q = query(collection(db, "paymentRequests"), orderBy("createdAt", "desc"));
-      const snapshot = await getDocs(q);
-      const paymentsData = snapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-      })) as PaymentRequest[];
-      setPayments(paymentsData);
+      const { data, error } = await supabase
+        .from("paymentRequests")
+        .select("*")
+        .order("createdAt", { ascending: false });
+
+      if (error) throw error;
+
+      setPayments((data as PaymentRequest[]) || []);
     } catch (error) {
       console.error("Error fetching payments:", error);
     } finally {
@@ -100,30 +86,42 @@ export default function AdminPaymentsPage() {
   };
 
   const handleApprove = async () => {
-    if (!selectedPayment || !currentUser || !db) return;
+    if (!selectedPayment || !currentUser) return;
     setIsProcessing(true);
 
     try {
-      // Update payment request status
-      await updateDoc(doc(db, "paymentRequests", selectedPayment.id), {
-        status: "approved",
-        processedAt: serverTimestamp(),
-        processedBy: currentUser.uid,
-      });
-
-      // Update user subscription
+      const now = new Date().toISOString();
       const duration = PRICING_PLANS[selectedPayment.plan].duration;
-      const startDate = new Date();
+      const startDate = now;
       const expiryDate = new Date();
       expiryDate.setMonth(expiryDate.getMonth() + duration);
+      const expiryIso = expiryDate.toISOString();
 
-      await updateDoc(doc(db, "users", selectedPayment.userId), {
-        subscriptionStatus: "active",
-        subscriptionPlan: selectedPayment.plan,
-        subscriptionStartDate: Timestamp.fromDate(startDate),
-        subscriptionExpiry: Timestamp.fromDate(expiryDate),
-        updatedAt: serverTimestamp(),
-      });
+      // Update payment request status
+      const { error: paymentError } = await supabase
+        .from("paymentRequests")
+        .update({
+          status: "approved",
+          processedAt: now,
+          processedBy: currentUser.id,
+        })
+        .eq("id", selectedPayment.id);
+
+      if (paymentError) throw paymentError;
+
+      // Update user subscription
+      const { error: userError } = await supabase
+        .from("users")
+        .update({
+          subscriptionStatus: "active",
+          subscriptionPlan: selectedPayment.plan,
+          subscriptionStartDate: startDate,
+          subscriptionExpiry: expiryIso,
+          updatedAt: now,
+        })
+        .eq("id", selectedPayment.userId);
+
+      if (userError) throw userError;
 
       await fetchPayments();
       setActionDialog(null);
@@ -136,16 +134,22 @@ export default function AdminPaymentsPage() {
   };
 
   const handleReject = async () => {
-    if (!selectedPayment || !currentUser || !db) return;
+    if (!selectedPayment || !currentUser) return;
     setIsProcessing(true);
 
     try {
-      await updateDoc(doc(db, "paymentRequests", selectedPayment.id), {
-        status: "rejected",
-        processedAt: serverTimestamp(),
-        processedBy: currentUser.uid,
-        rejectionReason: rejectionReason.trim() || "পেমেন্ট যাচাই করা যায়নি",
-      });
+      const now = new Date().toISOString();
+      const { error } = await supabase
+        .from("paymentRequests")
+        .update({
+          status: "rejected",
+          processedAt: now,
+          processedBy: currentUser.id,
+          rejectionReason: rejectionReason.trim() || "পেমেন্ট যাচাই করা যায়নি",
+        })
+        .eq("id", selectedPayment.id);
+
+      if (error) throw error;
 
       await fetchPayments();
       setActionDialog(null);
@@ -312,11 +316,11 @@ export default function AdminPaymentsPage() {
                       <strong>Amount:</strong> ৳{payment.amount}
                     </span>
                   </div>
-                  <p className="text-xs text-muted-foreground">
-                    {payment.createdAt?.toDate
-                      ? new Date(payment.createdAt.toDate()).toLocaleString("bn-BD")
-                      : "-"}
-                  </p>
+                   <p className="text-xs text-muted-foreground">
+                     {payment.createdAt
+                       ? new Date(payment.createdAt).toLocaleString("bn-BD")
+                       : "-"}
+                   </p>
                   {payment.rejectionReason && (
                     <p className="text-sm text-destructive">
                       <strong>Rejection Reason:</strong> {payment.rejectionReason}

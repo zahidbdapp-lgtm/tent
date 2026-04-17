@@ -1,13 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import {
-  collection,
-  query,
-  where,
-  getDocs,
-} from "firebase/firestore";
-import { db } from "@/lib/firebase";
+import { supabase } from "@/lib/supabaseClient";
 import { useAuth } from "@/contexts/auth-context";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -39,132 +33,104 @@ export default function TenantsFilesPage() {
   const [files, setFiles] = useState<FileInfo[]>([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    if (!user) return;
+   useEffect(() => {
+     if (!user) return;
 
-    const fetchFiles = async () => {
-      try {
-        if (isDemoUser && !isAdmin) {
-          // For demo users, use demo data
-          const demoFiles: FileInfo[] = [];
-          demoTenants.forEach((tenant) => {
-            if (tenant.nidFrontUrl) {
-              demoFiles.push({
-                name: `${tenant.name} - NID Front`,
-                type: "NID (Front)",
-                url: tenant.nidFrontUrl,
-                tenantId: tenant.id,
-                tenantName: tenant.name,
-                unitNumber: tenant.unitNumber,
-              });
-            }
-            if (tenant.nidBackUrl) {
-              demoFiles.push({
-                name: `${tenant.name} - NID Back`,
-                type: "NID (Back)",
-                url: tenant.nidBackUrl,
-                tenantId: tenant.id,
-                tenantName: tenant.name,
-                unitNumber: tenant.unitNumber,
-              });
-            }
-            if (tenant.photoUrl) {
-              demoFiles.push({
-                name: `${tenant.name} - Photo`,
-                type: "Photo",
-                url: tenant.photoUrl,
-                tenantId: tenant.id,
-                tenantName: tenant.name,
-                unitNumber: tenant.unitNumber,
-              });
-            }
-            if (tenant.agreementDocUrl) {
-              demoFiles.push({
-                name: `${tenant.name} - Agreement`,
-                type: "Agreement",
-                url: tenant.agreementDocUrl,
-                tenantId: tenant.id,
-                tenantName: tenant.name,
-                unitNumber: tenant.unitNumber,
-              });
-            }
-          });
-          setFiles(demoFiles);
-          setLoading(false);
-          return;
-        }
+     const fetchFiles = async () => {
+       try {
+         if (isDemoUser && !isAdmin) {
+           // For demo users, use demo data
+           const demoFiles: FileInfo[] = [];
+           demoTenants.forEach((tenant) => {
+             if (tenant.nidFrontUrl) {
+               demoFiles.push({
+                 name: `${tenant.name} - NID Front`,
+                 type: "NID (Front)",
+                 url: tenant.nidFrontUrl,
+                 tenantId: tenant.id,
+                 tenantName: tenant.name,
+                 unitNumber: tenant.unitNumber,
+               });
+             }
+             if (tenant.nidBackUrl) {
+               demoFiles.push({
+                 name: `${tenant.name} - NID Back`,
+                 type: "NID (Back)",
+                 url: tenant.nidBackUrl,
+                 tenantId: tenant.id,
+                 tenantName: tenant.name,
+                 unitNumber: tenant.unitNumber,
+               });
+             }
+             if (tenant.photoUrl) {
+               demoFiles.push({
+                 name: `${tenant.name} - Photo`,
+                 type: "Photo",
+                 url: tenant.photoUrl,
+                 tenantId: tenant.id,
+                 tenantName: tenant.name,
+                 unitNumber: tenant.unitNumber,
+               });
+             }
+           });
+           setFiles(demoFiles);
+           setLoading(false);
+           return;
+         }
 
-        if (!db) {
-          setLoading(false);
-          return;
-        }
+         // Fetch tenants for this owner from Supabase
+         const { data: tenants, error } = await supabase
+           .from("tenants")
+           .select("*")
+           .eq("ownerId", user.uid);
 
-        // Fetch tenants for this owner
-        const tenantsQuery = query(
-          collection(db, "tenants"),
-          where("ownerId", "==", user.uid)
-        );
-        const tenantsSnapshot = await getDocs(tenantsQuery);
-        const tenants = tenantsSnapshot.docs.map((doc) => ({
-          id: doc.id,
-          ...doc.data(),
-        })) as Tenant[];
+         if (error) throw error;
 
-        // Collect all files from all tenants
-        const allFiles: FileInfo[] = [];
-        tenants.forEach((tenant) => {
-          if (tenant.nidFrontUrl) {
-            allFiles.push({
-              name: `${tenant.name} - NID (Front)`,
-              type: "NID Front",
-              url: tenant.nidFrontUrl,
-              tenantId: tenant.id,
-              tenantName: tenant.name,
-              unitNumber: tenant.unitNumber,
-            });
-          }
-          if (tenant.nidBackUrl) {
-            allFiles.push({
-              name: `${tenant.name} - NID (Back)`,
-              type: "NID Back",
-              url: tenant.nidBackUrl,
-              tenantId: tenant.id,
-              tenantName: tenant.name,
-              unitNumber: tenant.unitNumber,
-            });
-          }
-          if (tenant.photoUrl) {
-            allFiles.push({
-              name: `${tenant.name} - Photo`,
-              type: "Photo",
-              url: tenant.photoUrl,
-              tenantId: tenant.id,
-              tenantName: tenant.name,
-              unitNumber: tenant.unitNumber,
-            });
-          }
-          if (tenant.agreementDocUrl) {
-            allFiles.push({
-              name: `${tenant.name} - Agreement`,
-              type: "Agreement",
-              url: tenant.agreementDocUrl,
-              tenantId: tenant.id,
-              tenantName: tenant.name,
-              unitNumber: tenant.unitNumber,
-            });
-          }
-        });
+         // Collect all files from all tenants
+         const allFiles: FileInfo[] = [];
+         tenants?.forEach((tenant) => {
+           if (tenant.nidFrontUrl) {
+             allFiles.push({
+               name: `${tenant.name} - NID (Front)`,
+               type: "NID Front",
+               url: tenant.nidFrontUrl,
+               tenantId: tenant.id,
+               tenantName: tenant.name,
+               unitNumber: tenant.unitNumber,
+             });
+           }
+           if (tenant.nidBackUrl) {
+             allFiles.push({
+               name: `${tenant.name} - NID (Back)`,
+               type: "NID Back",
+               url: tenant.nidBackUrl,
+               tenantId: tenant.id,
+               tenantName: tenant.name,
+               unitNumber: tenant.unitNumber,
+             });
+           }
+           if (tenant.photoUrl) {
+             allFiles.push({
+               name: `${tenant.name} - Photo`,
+               type: "Photo",
+               url: tenant.photoUrl,
+               tenantId: tenant.id,
+               tenantName: tenant.name,
+               unitNumber: tenant.unitNumber,
+             });
+           }
+         });
 
-        setFiles(allFiles.sort((a, b) => a.tenantName.localeCompare(b.tenantName)));
-      } catch (error) {
-        console.error("Failed to fetch files:", error);
-      } finally {
-        setLoading(false);
-      }
-    };
+         setFiles(allFiles.sort((a, b) => a.tenantName.localeCompare(b.tenantName)));
+       } catch (error) {
+         console.error("Failed to fetch files:", error);
+       } finally {
+         setLoading(false);
+       }
+     };
 
-    fetchFiles();
-  }, [user, isDemoUser, isAdmin]);
+     fetchFiles();
+   }, [user, isDemoUser, isAdmin]);
 
   if (loading) {
     return (
@@ -239,26 +205,12 @@ export default function TenantsFilesPage() {
                     ))}
                 </div>
               </div>
-            )}
-
-            {/* Agreements */}
-            {files.filter((f) => f.type === "Agreement").length > 0 && (
-              <div>
-                <h2 className="text-lg font-semibold mb-3">চুক্তিপত্র</h2>
-                <div className="grid gap-3">
-                  {files
-                    .filter((f) => f.type === "Agreement")
-                    .map((file) => (
-                      <FileCard key={`${file.tenantId}-agreement`} file={file} />
-                    ))}
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-    </div>
-  );
+             )}
+           </div>
+         </div>
+       )}
+     </div>
+   );
 }
 
 function FileCard({ file }: { file: FileInfo }) {

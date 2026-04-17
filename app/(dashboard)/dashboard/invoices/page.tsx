@@ -1,19 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import {
-  collection,
-  query,
-  where,
-  getDocs,
-  addDoc,
-  updateDoc,
-  deleteDoc,
-  doc,
-  serverTimestamp,
-  Timestamp,
-} from "firebase/firestore";
-import { db } from "@/lib/firebase";
+import { supabase } from "@/lib/supabaseClient";
 import { useAuth } from "@/contexts/auth-context";
 import { sendDueRentNotification } from "@/lib/emailjs";
 import { Button } from "@/components/ui/button";
@@ -114,7 +102,7 @@ const statusOptions: { value: InvoiceStatus; label: string }[] = [
 ];
 
 export default function InvoicesPage() {
-  const { user } = useAuth();
+  const { userData } = useAuth();
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [tenants, setTenants] = useState<Tenant[]>([]);
   const [properties, setProperties] = useState<Property[]>([]);
@@ -127,46 +115,37 @@ export default function InvoicesPage() {
   const [formData, setFormData] = useState<InvoiceFormData>(initialFormData);
 
   const fetchData = async () => {
-    if (!user || !db) return;
+    if (!user) return;
 
     try {
       // Fetch properties
-      const propertiesQuery = query(
-        collection(db, "properties"),
-        where("ownerId", "==", user.uid)
-      );
-      const propertiesSnapshot = await getDocs(propertiesQuery);
-      const propertiesData = propertiesSnapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-      })) as Property[];
-      setProperties(propertiesData);
+      const { data: propertiesData, error: propertiesError } = await supabase
+        .from("properties")
+        .select("*")
+        .eq("ownerId", userData.id);
+
+      if (propertiesError) throw propertiesError;
+      setProperties(propertiesData || []);
 
       // Fetch tenants
-      const tenantsQuery = query(
-        collection(db, "tenants"),
-        where("ownerId", "==", user.uid),
-        where("status", "==", "active")
-      );
-      const tenantsSnapshot = await getDocs(tenantsQuery);
-      const tenantsData = tenantsSnapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-      })) as Tenant[];
-      setTenants(tenantsData);
+      const { data: tenantsData, error: tenantsError } = await supabase
+        .from("tenants")
+        .select("*")
+        .eq("ownerId", user.uid)
+        .eq("status", "active");
+
+      if (tenantsError) throw tenantsError;
+      setTenants(tenantsData || []);
 
       // Fetch invoices
-      const invoicesQuery = query(
-        collection(db, "invoices"),
-        where("ownerId", "==", user.uid)
-      );
-      const invoicesSnapshot = await getDocs(invoicesQuery);
-      const invoicesData = invoicesSnapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-      })) as Invoice[];
-      setInvoices(invoicesData.sort((a, b) => 
-        b.createdAt.toMillis() - a.createdAt.toMillis()
+      const { data: invoicesData, error: invoicesError } = await supabase
+        .from("invoices")
+        .select("*")
+        .eq("ownerId", userData.id);
+
+      if (invoicesError) throw invoicesError;
+      setInvoices((invoicesData || []).sort((a, b) =>
+        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
       ));
     } catch (error) {
       console.error("Failed to fetch data:", error);
@@ -191,7 +170,7 @@ export default function InvoicesPage() {
         waterCharge: invoice.waterCharge,
         serviceCharge: invoice.serviceCharge,
         electricityBill: invoice.electricityBill,
-        dueDate: invoice.dueDate.toDate().toISOString().split("T")[0],
+        dueDate: invoice.dueDate.split("T")[0],
         paidAmount: invoice.paidAmount,
         status: invoice.status,
       });
@@ -223,7 +202,7 @@ export default function InvoicesPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user || !db) return;
+    if (!user) return;
 
     if (!formData.tenantId) {
       toast.error("Please select a tenant");
@@ -248,10 +227,11 @@ export default function InvoicesPage() {
         status = "overdue";
       }
 
+      const now = new Date().toISOString();
       const invoiceData = {
         tenantId: formData.tenantId,
         propertyId: tenant.propertyId,
-        ownerId: user.uid,
+        ownerId: userData.id,
         tenantName: tenant.name,
         tenantEmail: tenant.email,
         unitNumber: tenant.unitNumber,
@@ -264,16 +244,20 @@ export default function InvoicesPage() {
         totalAmount,
         paidAmount: formData.paidAmount,
         dueAmount,
-        dueDate: Timestamp.fromDate(new Date(formData.dueDate)),
+        dueDate: formData.dueDate,
         status,
-        paymentDate: status === "paid" ? serverTimestamp() : null,
-        updatedAt: serverTimestamp(),
+        paymentDate: status === "paid" ? now : null,
+        updatedAt: now,
       };
 
       if (selectedInvoice) {
-        await updateDoc(doc(db, "invoices", selectedInvoice.id), invoiceData);
+        const { error } = await supabase
+          .from("invoices")
+          .update(invoiceData)
+          .eq("id", selectedInvoice.id);
+        if (error) throw error;
         toast.success("Invoice updated successfully");
-        
+
         // Auto download receipt if payment is complete
         if (status === "paid" && selectedInvoice.status !== "paid") {
           const property = properties.find((p) => p.id === tenant.propertyId);
@@ -282,18 +266,16 @@ export default function InvoicesPage() {
             await downloadReceiptPDF({
               invoice: { ...selectedInvoice, ...invoiceData, paidAmount: formData.paidAmount, status: "paid" } as Invoice,
               property,
-              ownerName: user?.displayName || undefined,
+              ownerName: userData?.displayName || undefined,
             });
             toast.success("Receipt auto-generated and downloaded!", { duration: 4000 });
           }, 500);
         }
       } else {
-        await addDoc(collection(db, "invoices"), {
-          ...invoiceData,
-          emailSent: false,
-          emailSentAt: null,
-          createdAt: serverTimestamp(),
-        });
+        const { error } = await supabase
+          .from("invoices")
+          .insert({ ...invoiceData, createdAt: now, emailSent: false, emailSentAt: null });
+        if (error) throw error;
         toast.success("Invoice created successfully");
       }
 
@@ -308,10 +290,14 @@ export default function InvoicesPage() {
   };
 
   const handleDelete = async () => {
-    if (!selectedInvoice || !db) return;
+    if (!selectedInvoice) return;
 
     try {
-      await deleteDoc(doc(db, "invoices", selectedInvoice.id));
+      const { error } = await supabase
+        .from("invoices")
+        .delete()
+        .eq("id", selectedInvoice.id);
+      if (error) throw error;
       toast.success("Invoice deleted successfully");
       setIsDeleteDialogOpen(false);
       setSelectedInvoice(null);
@@ -323,8 +309,6 @@ export default function InvoicesPage() {
   };
 
   const handleSendReminder = async (invoice: Invoice) => {
-    if (!db) return;
-
     setIsSendingEmail(invoice.id);
 
     try {
@@ -333,16 +317,17 @@ export default function InvoicesPage() {
         invoice.tenantEmail,
         invoice.tenantName,
         invoice.dueAmount,
-        invoice.dueDate.toDate().toLocaleDateString(),
+        new Date(invoice.dueDate).toLocaleDateString(),
         property?.name || "Property",
         invoice.unitNumber
       );
 
       if (success) {
-        await updateDoc(doc(db, "invoices", invoice.id), {
-          emailSent: true,
-          emailSentAt: serverTimestamp(),
-        });
+        const { error } = await supabase
+          .from("invoices")
+          .update({ emailSent: true, emailSentAt: new Date().toISOString() })
+          .eq("id", invoice.id);
+        if (error) throw error;
         toast.success("Reminder sent successfully");
         fetchData();
       } else {
@@ -424,7 +409,7 @@ export default function InvoicesPage() {
       await downloadReceiptPDF({
         invoice,
         property,
-        ownerName: user?.displayName || undefined,
+      ownerName: userData?.displayName || undefined,
       });
       
       toast.success(

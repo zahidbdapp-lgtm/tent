@@ -62,7 +62,7 @@ export default function DemoPage() {
 
   const stats = demoDashboardStats;
   const recentInvoices = demoInvoices
-    .sort((a, b) => b.createdAt.toMillis() - a.createdAt.toMillis())
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
     .slice(0, 5);
 
   const statCards = [

@@ -1,28 +1,16 @@
 "use client";
 
 import { createContext, useContext, useEffect, useState, ReactNode } from "react";
-import {
-  User as FirebaseUser,
-  onAuthStateChanged,
-  signInWithEmailAndPassword,
-  createUserWithEmailAndPassword,
-  signOut as firebaseSignOut,
-  updateProfile,
-  GoogleAuthProvider,
-  signInWithPopup,
-  signInWithRedirect,
-  getRedirectResult,
-} from "firebase/auth";
-import { doc, getDoc, setDoc, serverTimestamp, collection, addDoc } from "firebase/firestore";
-import { auth, db, isFirebaseConfigured } from "@/lib/firebase";
+import { User as SupabaseUser, Session } from "@supabase/supabase-js";
+import { supabase, isSupabaseConfigured } from "@/lib/supabaseClient";
 import { User } from "@/types";
 
 // Admin credentials (hardcoded as per requirement)
-const ADMIN_EMAIL = "zahid.bdapp2026";
+const ADMIN_EMAIL = "zahid.bdapp2026@gmail.com";
 const ADMIN_PASSWORD = "za@#11708022";
 
 interface AuthContextType {
-  user: FirebaseUser | null;
+  user: SupabaseUser | null;
   userData: User | null;
   loading: boolean;
   isConfigured: boolean;
@@ -44,7 +32,7 @@ interface AuthContextType {
       plan: string;
     }
   ) => Promise<void>;
-  signInWithGoogle: () => Promise<{ needsPaymentInfo?: boolean }>;
+  signInWithGoogle: () => Promise<void>;
   signOut: () => Promise<void>;
   enterDemoMode: () => void;
   exitDemoMode: () => void;
@@ -54,79 +42,201 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<FirebaseUser | null>(null);
+  const [user, setUser] = useState<SupabaseUser | null>(null);
   const [userData, setUserData] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [isDemoMode, setIsDemoMode] = useState(false);
 
-  // Check for Google redirect result on mount
-  useEffect(() => {
-    if (!isFirebaseConfigured || !auth || !db) {
-      setLoading(false);
-      return;
+  // Fetch user profile from 'users' table
+  const fetchUserProfile = async (uid: string) => {
+    console.log("[fetchUserProfile] Starting for uid:", uid);
+    console.log("[fetchUserProfile] supabase available:", !!supabase);
+    
+    if (!supabase) {
+      console.error("[fetchUserProfile] Supabase client is null!");
+      return null;
     }
 
-    // Check for redirect result (in case popup was blocked and redirect was used)
-    const checkRedirectResult = async () => {
-      try {
-        const result = await getRedirectResult(auth);
-        if (result?.user) {
-          // User signed in via redirect, create user doc if needed
-          const userDoc = await getDoc(doc(db, "users", result.user.uid));
-          if (!userDoc.exists()) {
-            await setDoc(doc(db, "users", result.user.uid), {
-              email: result.user.email,
-              displayName: result.user.displayName || "User",
-              phone: result.user.phoneNumber || "",
-              role: "landlord",
-              subscriptionStatus: "demo",
-              subscriptionPlan: null,
-              subscriptionExpiry: null,
-              createdAt: serverTimestamp(),
-              updatedAt: serverTimestamp(),
-            });
-          }
+    try {
+      console.log("[fetchUserProfile] About to query users table with eq('id', uid)");
+      const { data, error, status, statusText } = await supabase
+        .from("users")
+        .select("*")
+        .eq("id", uid)
+        .single();
+
+      console.log("[fetchUserProfile] Full response object:", { 
+        data, 
+        error: error ? { 
+          code: error.code, 
+          message: error.message, 
+          details: error.details, 
+          hint: error.hint,
+          status: error.status 
+        } : null,
+        status,
+        statusText
+      });
+
+      if (error) {
+        console.error("[fetchUserProfile] ❌ QUERY FAILED");
+        console.error("[fetchUserProfile] Error code:", error.code);
+        console.error("[fetchUserProfile] Error message:", error.message);
+        console.error("[fetchUserProfile] Error details:", error.details);
+        console.error("[fetchUserProfile] Error hint:", error.hint);
+        
+        if (error.code === "PGRST116") {
+          console.log("[fetchUserProfile] No rows found (PGRST116)");
+          return null;
         }
-      } catch (error) {
-        console.error("Redirect result error:", error);
+        throw error;
       }
+      
+      console.log("[fetchUserProfile] ✅ Success! User data retrieved:", {
+        id: data.id,
+        email: data.email,
+        role: data.role,
+        subscriptionStatus: data.subscription_status
+      });
+      return data as User;
+    } catch (err) {
+      console.error("[fetchUserProfile] Caught error:", err);
+      console.error("[fetchUserProfile] Error type:", typeof err);
+      if (err && typeof err === 'object') {
+        console.error("[fetchUserProfile] Error keys:", Object.keys(err));
+        // Try to extract code from PostgREST error
+        const anyErr = err as any;
+        if (anyErr.code) console.error("[fetchUserProfile] err.code:", anyErr.code);
+        if (anyErr.message) console.error("[fetchUserProfile] err.message:", anyErr.message);
+      }
+      return null;
+    }
+  };
+
+  // Create user profile in 'users' table
+  const createUserProfile = async (uid: string, profile: Partial<User>) => {
+    const { error } = await supabase.from("users").insert({
+      id: uid,
+      ...profile,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    });
+    if (error) {
+      console.error("Error creating user profile:", error);
+      throw error;
+    }
+  };
+
+  // Update user profile
+  const updateUserProfile = async (uid: string, updates: Partial<User>) => {
+    const { error } = await supabase
+      .from("users")
+      .update({ ...updates, updatedAt: new Date().toISOString() })
+      .eq("id", uid);
+    if (error) {
+      console.error("Error updating user profile:", error);
+      throw error;
+    }
+  };
+
+  useEffect(() => {
+    // Get initial session
+    const getInitialSession = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      setUser(session?.user ?? null);
+      if (session?.user) {
+        const profile = await fetchUserProfile(session.user.id);
+        setUserData(profile);
+      }
+      setLoading(false);
     };
 
-    checkRedirectResult();
+    getInitialSession();
 
-    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
-      setUser(firebaseUser);
-      
-      if (firebaseUser && db) {
-        const userDoc = await getDoc(doc(db, "users", firebaseUser.uid));
-        if (userDoc.exists()) {
-          setUserData({ id: userDoc.id, ...userDoc.data() } as User);
-        }
+    // Listen for auth changes
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange(async (event: string, session: Session | null) => {
+      setUser(session?.user ?? null);
+      if (session?.user) {
+        const profile = await fetchUserProfile(session.user.id);
+        setUserData(profile);
       } else {
         setUserData(null);
       }
-      
       setLoading(false);
     });
 
-    return () => unsubscribe();
+    return () => subscription.unsubscribe();
   }, []);
 
   const signIn = async (email: string, password: string): Promise<{ isAdminLogin?: boolean }> => {
-    if (!auth) throw new Error("Firebase not configured");
-    
-    // Check if admin login
-    const isAdminLogin = email === ADMIN_EMAIL && password === ADMIN_PASSWORD;
-    
-    await signInWithEmailAndPassword(auth, email, password);
-    
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) throw error;
+
+    // Check if admin (by email)
+    const isAdminLogin = email === ADMIN_EMAIL;
+
+    // If admin login, ensure admin profile exists in database
+    if (isAdminLogin && data.user) {
+      const { data: existingProfile } = await supabase
+        .from("users")
+        .select("id")
+        .eq("id", data.user.id)
+        .single();
+
+      if (!existingProfile) {
+        // Create admin profile
+        const { error: insertError } = await supabase
+          .from("users")
+          .insert({
+            id: data.user.id,
+            email: ADMIN_EMAIL,
+            displayName: "Admin",
+            phone: "",
+            role: "admin",
+            subscriptionStatus: "active",
+            subscriptionPlan: "yearly",
+            subscriptionStartDate: new Date().toISOString(),
+            subscriptionExpiry: null,
+            paymentMethod: null,
+            paymentNumber: null,
+            paymentTransactionId: null,
+            paymentAmount: null,
+            paymentDate: null,
+            rejectionReason: null,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          });
+
+        if (insertError) {
+          console.error("Failed to create admin profile:", insertError);
+          // Don't throw here, just log - admin can still login
+        }
+      } else {
+        // Ensure existing profile has admin role
+        const { error: updateError } = await supabase
+          .from("users")
+          .update({
+            role: "admin",
+            subscriptionStatus: "active",
+            updatedAt: new Date().toISOString(),
+          })
+          .eq("id", data.user.id);
+
+        if (updateError) {
+          console.error("Failed to update admin profile:", updateError);
+        }
+      }
+    }
+
     return { isAdminLogin };
   };
 
   const signUp = async (
-    email: string, 
-    password: string, 
-    displayName: string, 
+    email: string,
+    password: string,
+    displayName: string,
     phone: string,
     paymentInfo: {
       paymentMethod: string;
@@ -136,164 +246,116 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       plan: string;
     }
   ) => {
-    if (!auth || !db) throw new Error("Firebase not configured");
-    
-    try {
-      const { user: newUser } = await createUserWithEmailAndPassword(auth, email, password);
-      
-      await updateProfile(newUser, { displayName });
-      
-      // All new users start as "payment_pending" until admin approves
-      await setDoc(doc(db, "users", newUser.uid), {
-        email,
-        displayName,
-        phone,
-        role: "landlord",
-        subscriptionStatus: "payment_pending", // Payment pending until admin approves
-        subscriptionPlan: paymentInfo.plan,
-        subscriptionStartDate: null,
-        subscriptionExpiry: null,
-        paymentMethod: paymentInfo.paymentMethod,
-        paymentNumber: paymentInfo.paymentNumber,
-        paymentTransactionId: paymentInfo.transactionId,
-        paymentAmount: paymentInfo.amount,
-        paymentDate: serverTimestamp(),
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      });
+    // Sign up with Supabase Auth
+    const { data: { user: newUser }, error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: {
+        data: {
+          displayName,
+          phone,
+        },
+      },
+    });
 
-      // Create a payment request for admin to verify
-      await addDoc(collection(db, "paymentRequests"), {
-        userId: newUser.uid,
-        userEmail: email,
-        userName: displayName,
-        plan: paymentInfo.plan,
-        amount: paymentInfo.amount,
-        paymentMethod: paymentInfo.paymentMethod,
-        transactionId: paymentInfo.transactionId,
-        screenshotUrl: "", // User can upload screenshot later if needed
-        status: "pending",
-        createdAt: serverTimestamp(),
-        processedAt: null,
-        processedBy: null,
-        rejectionReason: null,
-      });
-    } catch (error) {
-      console.error("SignUp error:", error);
-      throw error;
+    if (error) throw error;
+    if (!newUser) throw new Error("Registration failed");
+
+    // Create user profile in 'users' table
+    await createUserProfile(newUser.id, {
+      email,
+      displayName,
+      phone,
+      role: "landlord",
+      subscriptionStatus: "payment_pending",
+      subscriptionPlan: paymentInfo.plan,
+      subscriptionStartDate: null,
+      subscriptionExpiry: null,
+      paymentMethod: paymentInfo.paymentMethod,
+      paymentNumber: paymentInfo.paymentNumber,
+      paymentTransactionId: paymentInfo.transactionId,
+      paymentAmount: paymentInfo.amount,
+      paymentDate: new Date().toISOString(),
+      rejectionReason: null,
+    });
+
+    // Create a payment request for admin to verify
+    const { error: paymentError } = await supabase.from("paymentRequests").insert({
+      userId: newUser.id,
+      userEmail: email,
+      userName: displayName,
+      plan: paymentInfo.plan,
+      amount: paymentInfo.amount,
+      paymentMethod: paymentInfo.paymentMethod,
+      transactionId: paymentInfo.transactionId,
+      screenshotUrl: "",
+      status: "pending",
+      createdAt: new Date().toISOString(),
+    });
+
+    if (paymentError) {
+      console.error("Error creating payment request:", paymentError);
     }
   };
 
-  const signInWithGoogle = async (): Promise<{ needsPaymentInfo?: boolean }> => {
-    if (!auth || !db) throw new Error("Firebase not configured");
-    const provider = new GoogleAuthProvider();
-    provider.setCustomParameters({
-      prompt: 'select_account'
+  const signInWithGoogle = async (): Promise<void> => {
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: "google",
+      options: {
+        redirectTo: `${window.location.origin}/auth/callback`,
+      },
     });
-    
-    try {
-      // Try popup first
-      const { user: googleUser } = await signInWithPopup(auth, provider);
-      
-      // Check if user document exists
-      const userDoc = await getDoc(doc(db, "users", googleUser.uid));
-      if (!userDoc.exists()) {
-        // New Google user - they need to provide payment info
-        // Create a temporary user doc with pending_payment_info status
-        await setDoc(doc(db, "users", googleUser.uid), {
-          email: googleUser.email,
-          displayName: googleUser.displayName || "User",
-          phone: googleUser.phoneNumber || "",
-          role: "landlord",
-          subscriptionStatus: "payment_pending",
-          subscriptionPlan: null,
-          subscriptionStartDate: null,
-          subscriptionExpiry: null,
-          paymentMethod: null,
-          paymentNumber: null,
-          paymentTransactionId: null,
-          paymentAmount: null,
-          paymentDate: null,
-          needsPaymentInfo: true,
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp(),
-        });
-        return { needsPaymentInfo: true };
-      }
-      return { needsPaymentInfo: false };
-    } catch (error: unknown) {
-      // If popup is blocked or fails, fallback to redirect
-      const firebaseError = error as { code?: string };
-      if (
-        firebaseError.code === "auth/popup-blocked" ||
-        firebaseError.code === "auth/popup-closed-by-user" ||
-        firebaseError.code === "auth/cancelled-popup-request"
-      ) {
-        // Use redirect as fallback
-        await signInWithRedirect(auth, provider);
-      } else {
-        throw error;
-      }
-      return {};
-    }
+    if (error) throw error;
   };
 
   const signOut = async () => {
-    if (!auth) throw new Error("Firebase not configured");
-    await firebaseSignOut(auth);
+    const { error } = await supabase.auth.signOut();
+    if (error) throw error;
     setUserData(null);
+    setIsDemoMode(false);
   };
 
-  const isAdmin = userData?.role === "admin";
+  const isAdmin = userData?.role === "admin" || user?.email === ADMIN_EMAIL;
   const isDemoUser = userData?.subscriptionStatus === "demo";
-  
-  // Check if user can access dashboard - only active users (+ admins)
   const canAccessDashboard = isAdmin || (userData?.subscriptionStatus === "active" && !isDemoMode) || isDemoMode;
-  
-  // Get user status message
+
   const getUserStatusMessage = (): string | null => {
     if (isDemoMode) return null;
     if (!userData) return null;
-    
+
     switch (userData.subscriptionStatus) {
       case "demo":
         return "আপনি Demo মোডে আছেন। সম্পূর্ণ access এর জন্য কোন package কিনুন।";
       case "payment_pending":
         return "আপনার পেমেন্ট যাচাইকরণের অপেক্ষায় আছে। Admin approve করলে আপনি dashboard access পাবেন।";
       case "banned":
-        return "আপনার একাউন্ট বন্ধ করা হয়েছে। সাহায্যের জন্য admin এর সাথে যোগাযোগ করুন।";
+        return userData.rejectionReason || "আপনার একাউন্ট বন্ধ করা হয়েছে। সাহায্যের জন্য admin এর সাথেযোগাযোগ করুন।";
       case "payment_due":
-        return "আপনার পেমেন্ট বকেয়া আছে। পেমেন্ট করে সাবস্ক্রিপশন চালু রাখুন।";
+        return userData.rejectionReason || "আপনার পেমেন্ট বকেয়া আছে। পেমেন্ট করে সাবস্ক্রিপশন চলমান রাখুন।";
       default:
         return null;
     }
   };
-  
+
   const userStatusMessage = getUserStatusMessage();
-  
-  // Demo mode functions
-  const enterDemoMode = () => {
-    setIsDemoMode(true);
-  };
-  
-  const exitDemoMode = () => {
-    setIsDemoMode(false);
-  };
+
+  const enterDemoMode = () => setIsDemoMode(true);
+  const exitDemoMode = () => setIsDemoMode(false);
 
   return (
-    <AuthContext.Provider 
-      value={{ 
-        user, 
-        userData, 
-        loading, 
-        isConfigured: isFirebaseConfigured, 
+    <AuthContext.Provider
+      value={{
+        user,
+        userData,
+        loading,
+        isConfigured: isSupabaseConfigured,
         isAdmin,
         isDemoUser,
         canAccessDashboard,
         userStatusMessage,
-        signIn, 
-        signUp, 
-        signInWithGoogle, 
+        signIn,
+        signUp,
+        signInWithGoogle,
         signOut,
         enterDemoMode,
         exitDemoMode,

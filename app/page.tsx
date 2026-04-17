@@ -17,7 +17,7 @@ import {
   Clock,
   Check,
 } from "lucide-react";
-import { isFirebaseConfigured } from "@/lib/firebase";
+import { isSupabaseConfigured } from "@/lib/supabaseClient";
 import { PRICING_PLANS } from "@/types";
 
 const features = [
@@ -77,13 +77,13 @@ const paymentMethods = [
 export default function LandingPage() {
   return (
     <div className="min-h-screen bg-background">
-      {/* Firebase Setup Banner */}
-      {!isFirebaseConfigured && (
+      {/* Supabase Setup Banner */}
+      {!isSupabaseConfigured && (
         <div className="bg-amber-500 text-amber-950 py-3 px-4">
           <div className="container mx-auto flex items-center justify-center gap-2 text-sm">
             <AlertTriangle className="h-4 w-4" />
-            <span className="font-medium">Firebase not configured.</span>
-            <span>Click Settings (gear icon) &gt; Vars to add your Firebase environment variables.</span>
+            <span className="font-medium">Supabase not configured.</span>
+            <span>Click Settings (gear icon) &gt; Vars to add your Supabase environment variables.</span>
           </div>
         </div>
       )}

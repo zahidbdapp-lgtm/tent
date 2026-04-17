@@ -10,7 +10,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { FieldGroup, Field, FieldLabel } from "@/components/ui/field";
 import { Spinner } from "@/components/ui/spinner";
 import { PRICING_PLANS, SubscriptionPlan, PaymentMethod } from "@/types";
-import { Building2, Mail, Lock, User, Phone, CheckCircle, Check, Smartphone, Calendar, Eye } from "lucide-react";
+import { Building2, Mail, Lock, User, Phone, CheckCircle, Check, Smartphone, Calendar, Eye, ArrowLeft } from "lucide-react";
 
 const paymentMethods: { id: PaymentMethod; name: string; number: string; color: string }[] = [
   { id: "bkash", name: "bKash", number: "01727132605", color: "bg-[#E2136E]" },
@@ -42,7 +42,17 @@ export default function RegisterPage() {
   const { signUp, enterDemoMode } = useAuth();
   const router = useRouter();
 
-  const validateStep1 = () => {
+  const validateEmail = (email: string): boolean => {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return emailRegex.test(email);
+  };
+
+  const validatePhone = (phone: string): boolean => {
+    const phoneRegex = /^(\+880|01)[3-9]\d{8}$/;
+    return phoneRegex.test(phone.replace(/\s+/g, ""));
+   };
+
+   const validateStep1 = () => {
     if (!displayName.trim()) {
       setError("নাম দিন।");
       return false;
@@ -51,8 +61,16 @@ export default function RegisterPage() {
       setError("ইমেইল দিন।");
       return false;
     }
+    if (!validateEmail(email)) {
+      setError("সঠিক ইমেইল ফরম্যাট দিন (যেমন: user@example.com)");
+      return false;
+    }
     if (!phone.trim()) {
       setError("ফোন নম্বর দিন।");
+      return false;
+    }
+    if (!validatePhone(phone)) {
+      setError("সঠিক ফোন নম্বর ফরম্যাট দিন (যেমন: 01712345678 বা +8801712345678)");
       return false;
     }
     if (password !== confirmPassword) {
@@ -113,18 +131,23 @@ export default function RegisterPage() {
         router.push("/registration-pending");
       }, 2000);
     } catch (err) {
-      const firebaseError = err as { code?: string };
-      if (firebaseError.code === "auth/email-already-in-use") {
+      console.error('Sign up error:', err);
+      const supabaseError = err as { message?: string; status?: number };
+      const message = supabaseError.message?.toLowerCase() || '';
+
+      // Check for specific error types
+      if (message.includes('already registered') || message.includes('email already in use') || message.includes('user already exists')) {
         setError("এই ইমেইল দিয়ে আগে থেকেই একাউন্ট আছে।");
-      } else if (firebaseError.code === "auth/invalid-email") {
+      } else if (message.includes('email rate limit exceeded') || (message.includes('rate limit') && message.includes('email'))) {
+        setError("অনেকবার চেষ্টা করেছেন। কিছুক্ষণ অপেক্ষা করে আবার চেষ্টা করুন।");
+      } else if (message.includes('invalid email') || message.includes('email address invalid') || message.includes('email format')) {
         setError("ইমেইল ফরম্যাট সঠিক নয়।");
-      } else if (firebaseError.code === "auth/weak-password") {
+      } else if (message.includes('weak password') || message.includes('password') || message.includes('short')) {
         setError("পাসওয়ার্ড আরো শক্তিশালী করুন।");
       } else {
         setError("একাউন্ট তৈরি করতে সমস্যা হয়েছে। আবার চেষ্টা করুন।");
       }
-      console.error(err);
-    } finally {
+     } finally {
       setIsLoading(false);
     }
   };
@@ -133,18 +156,28 @@ export default function RegisterPage() {
     router.push("/demo");
   };
 
+  const handleGoHome = () => {
+    router.push("/");
+  };
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
       <div className="w-full max-w-lg">
-        <div className="flex flex-col items-center mb-8">
-          <div className="flex items-center gap-2 mb-2">
-            <Building2 className="h-8 w-8 text-primary" />
-            <span className="text-2xl font-bold text-foreground">PropManager</span>
+        <div className="flex items-center justify-between mb-8">
+          <button
+            onClick={handleGoHome}
+            className="flex items-center gap-1 text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            <span className="text-sm">Home</span>
+          </button>
+          <div className="flex items-center gap-2">
+            <Building2 className="h-6 w-6 text-primary" />
+            <span className="text-xl font-bold text-foreground">PropManager</span>
           </div>
-          <p className="text-muted-foreground text-sm">Property Management System</p>
-        </div>
+         </div>
 
-        {/* Step Indicator */}
+         {/* Step Indicator */}
         <div className="flex items-center justify-center gap-4 mb-6">
           <div className={`flex items-center gap-2 ${step === 1 ? 'text-primary' : 'text-muted-foreground'}`}>
             <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium ${step === 1 ? 'bg-primary text-primary-foreground' : step > 1 ? 'bg-success text-success-foreground' : 'bg-muted'}`}>
@@ -217,11 +250,13 @@ export default function RegisterPage() {
                       <Input
                         id="phone"
                         type="tel"
-                        placeholder="+880 1XXX-XXXXXX"
+                        placeholder="01XXX-XXXXXX"
                         value={phone}
                         onChange={(e) => setPhone(e.target.value)}
                         className="pl-10"
                         required
+                        pattern="(01|\\+8801)[3-9][0-9]{8}"
+                        title="Please enter a valid Bangladeshi phone number (e.g., 01712345678)"
                       />
                     </div>
                   </Field>
@@ -368,26 +403,29 @@ export default function RegisterPage() {
                         Amount: <span className="font-bold text-foreground">৳{PRICING_PLANS[selectedPlan].price}</span>
                       </p>
                     </div>
-                  )}
+                   )}
 
-                  <Field>
-                    <FieldLabel htmlFor="paymentNumber">আপনার {selectedPaymentMethod || 'bKash/Nagad/Rocket'} নম্বর</FieldLabel>
-                    <div className="relative">
-                      <Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                      <Input
-                        id="paymentNumber"
-                        type="tel"
-                        placeholder="01XXXXXXXXX"
-                        value={paymentNumber}
-                        onChange={(e) => setPaymentNumber(e.target.value)}
-                        className="pl-10"
-                        required
-                      />
-                    </div>
-                  </Field>
+                    {/* Payment Number (sender's mobile) */}
+                    <Field>
+                      <FieldLabel htmlFor="paymentNumber">পেমেন্টের নম্বর (যেখান থেকে পেমেন্ট করেছেন)</FieldLabel>
+                      <div className="relative">
+                        <Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                        <Input
+                          id="paymentNumber"
+                          type="tel"
+                          placeholder="যে নম্বর থেকে পেমেন্ট করেছেন সেটা দিন"
+                          value={paymentNumber}
+                          onChange={(e) => setPaymentNumber(e.target.value)}
+                          className="pl-10"
+                          required
+                          pattern="(01|\\+8801)[3-9][0-9]{8}"
+                          title="Valid Bangladeshi mobile number (e.g., 01712345678)"
+                        />
+                      </div>
+                    </Field>
 
-                  <Field>
-                    <FieldLabel htmlFor="transactionId">Transaction ID</FieldLabel>
+                    <Field>
+                      <FieldLabel htmlFor="transactionId">Transaction ID</FieldLabel>
                     <Input
                       id="transactionId"
                       type="text"

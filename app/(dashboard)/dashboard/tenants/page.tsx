@@ -1,20 +1,8 @@
 "use client";
 
 import { useEffect, useState, useRef } from "react";
-import {
-  collection,
-  query,
-  where,
-  getDocs,
-  addDoc,
-  updateDoc,
-  deleteDoc,
-  doc,
-  serverTimestamp,
-  Timestamp,
-} from "firebase/firestore";
-import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
-import { db, storage } from "@/lib/firebase";
+import { supabase } from "@/lib/supabaseClient";
+import { uploadImage } from "@/lib/storageHelper";
 import { useAuth } from "@/contexts/auth-context";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -145,72 +133,82 @@ export default function TenantsPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formData, setFormData] = useState<TenantFormData>(initialFormData);
   
-  // File states
-  const [agreementFile, setAgreementFile] = useState<File | null>(null);
-  const [nidFrontFile, setNidFrontFile] = useState<File | null>(null);
-  const [nidBackFile, setNidBackFile] = useState<File | null>(null);
-  const [photoFile, setPhotoFile] = useState<File | null>(null);
+   // File states
+   const [nidFrontFile, setNidFrontFile] = useState<File | null>(null);
+   const [nidBackFile, setNidBackFile] = useState<File | null>(null);
+   const [photoFile, setPhotoFile] = useState<File | null>(null);
   
   // File previews
   const [nidFrontPreview, setNidFrontPreview] = useState<string | null>(null);
   const [nidBackPreview, setNidBackPreview] = useState<string | null>(null);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
 
-  // File warning dialog
-  const [fileWarning, setFileWarning] = useState<{
-    show: boolean;
-    file: File | null;
-    type: "nidFront" | "nidBack" | "photo" | null;
-  }>({ show: false, file: null, type: null });
-
-  // Document file warning dialog
-  const [documentWarning, setDocumentWarning] = useState<{
-    show: boolean;
-    file: File | null;
-  }>({ show: false, file: null });
+   // File warning dialog
+   const [fileWarning, setFileWarning] = useState<{
+     show: boolean;
+     file: File | null;
+     type: "nidFront" | "nidBack" | "photo" | null;
+   }>({ show: false, file: null, type: null });
 
   const fetchData = async () => {
-    if (!user) return;
+    console.log("[fetchData] Starting...");
+    if (!user) {
+      console.log("[fetchData] No user, returning early");
+      return;
+    }
 
     try {
-      // For demo users, show demo data
       if (isDemoUser && !isAdmin) {
+        console.log("[fetchData] Demo mode - using mock data");
         setProperties(demoProperties);
         setTenants(demoTenants);
         setLoading(false);
         return;
       }
 
-      if (!db) {
-        setLoading(false);
-        return;
+      console.log("[fetchData] Fetching properties from Supabase...");
+      const { data: propertiesData, error: propertiesError } = await supabase
+        .from("properties")
+        .select("*")
+        .eq("ownerId", user.uid);
+
+      if (propertiesError) {
+        console.error("[fetchData] Properties error:", {
+          code: propertiesError.code,
+          message: propertiesError.message,
+          details: propertiesError.details
+        });
+        throw propertiesError;
       }
+      console.log("[fetchData] Properties fetched:", propertiesData?.length);
+      setProperties(propertiesData || []);
 
-      // Fetch properties
-      const propertiesQuery = query(
-        collection(db, "properties"),
-        where("ownerId", "==", user.uid)
-      );
-      const propertiesSnapshot = await getDocs(propertiesQuery);
-      const propertiesData = propertiesSnapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-      })) as Property[];
-      setProperties(propertiesData);
+      console.log("[fetchData] Fetching tenants from Supabase...");
+      const { data: tenantsData, error: tenantsError } = await supabase
+        .from("tenants")
+        .select("*")
+        .eq("ownerId", user.uid);
 
-      // Fetch tenants
-      const tenantsQuery = query(
-        collection(db, "tenants"),
-        where("ownerId", "==", user.uid)
-      );
-      const tenantsSnapshot = await getDocs(tenantsQuery);
-      const tenantsData = tenantsSnapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-      })) as Tenant[];
-      setTenants(tenantsData);
+      if (tenantsError) {
+        console.error("[fetchData] Tenants error:", {
+          code: tenantsError.code,
+          message: tenantsError.message,
+          details: tenantsError.details
+        });
+        throw tenantsError;
+      }
+      console.log("[fetchData] Tenants fetched:", tenantsData?.length);
+      setTenants(tenantsData || []);
     } catch (error) {
-      console.error("Failed to fetch data:", error);
+      console.error("[fetchData] Caught error:", error);
+      console.error("[fetchData] Error type:", typeof error);
+      if (error instanceof Error) {
+        console.error("[fetchData] Error.name:", error.name);
+        console.error("[fetchData] Error.message:", error.message);
+      } else {
+        console.error("[fetchData] Not an Error object. Keys:", Object.keys(error));
+        console.error("[fetchData] Full error object:", error);
+      }
       toast.error("ডাটা লোড করতে সমস্যা হয়েছে");
     } finally {
       setLoading(false);
@@ -221,51 +219,49 @@ export default function TenantsPage() {
     fetchData();
   }, [user, isDemoUser, isAdmin]);
 
-  const handleOpenDialog = (tenant?: Tenant) => {
-    if (tenant) {
-      setSelectedTenant(tenant);
-      setFormData({
-        propertyId: tenant.propertyId,
-        unitNumber: tenant.unitNumber,
-        name: tenant.name,
-        email: tenant.email,
-        phone: tenant.phone,
-        nid: tenant.nid,
-        monthlyRent: tenant.monthlyRent?.toString() || "",
-        gasCharge: tenant.gasCharge?.toString() || "",
-        waterCharge: tenant.waterCharge?.toString() || "",
-        serviceCharge: tenant.serviceCharge?.toString() || "",
-        electricityBill: tenant.electricityBill?.toString() || "",
-        currentBill: tenant.currentBill?.toString() || "",
-        advanceAmount: tenant.advanceAmount?.toString() || "",
-        advanceMonths: tenant.advanceMonths?.toString() || "",
-        moveInDate: tenant.moveInDate?.toDate?.()?.toISOString().split("T")[0] || "",
-        status: tenant.status,
-      });
-      setNidFrontPreview(tenant.nidFrontUrl || null);
-      setNidBackPreview(tenant.nidBackUrl || null);
-      setPhotoPreview(tenant.photoUrl || null);
-    } else {
-      setSelectedTenant(null);
-      setFormData(initialFormData);
-      setNidFrontPreview(null);
-      setNidBackPreview(null);
-      setPhotoPreview(null);
-    }
-    setAgreementFile(null);
-    setNidFrontFile(null);
-    setNidBackFile(null);
-    setPhotoFile(null);
-    setIsDialogOpen(true);
-  };
+    const handleOpenDialog = (tenant?: Tenant) => {
+      if (tenant) {
+        setSelectedTenant(tenant);
+        setFormData({
+          propertyId: tenant.propertyId,
+          unitNumber: tenant.unitNumber,
+          name: tenant.name,
+          email: tenant.email,
+          phone: tenant.phone,
+          nid: tenant.nid,
+          monthlyRent: tenant.monthlyRent?.toString() || "",
+          gasCharge: tenant.gasCharge?.toString() || "",
+          waterCharge: tenant.waterCharge?.toString() || "",
+          serviceCharge: tenant.serviceCharge?.toString() || "",
+          electricityBill: tenant.electricityBill?.toString() || "",
+          currentBill: tenant.currentBill?.toString() || "",
+          advanceAmount: tenant.advanceAmount?.toString() || "",
+          advanceMonths: tenant.advanceMonths?.toString() || "",
+          moveInDate: tenant.moveInDate?.split("T")[0] || "",
+          status: tenant.status,
+        });
+        setNidFrontPreview(tenant.nidFrontUrl || null);
+        setNidBackPreview(tenant.nidBackUrl || null);
+        setPhotoPreview(tenant.photoUrl || null);
+      } else {
+        setSelectedTenant(null);
+        setFormData(initialFormData);
+        setNidFrontPreview(null);
+        setNidBackPreview(null);
+        setPhotoPreview(null);
+      }
+      setNidFrontFile(null);
+      setNidBackFile(null);
+      setPhotoFile(null);
+      setIsDialogOpen(true);
+    };
 
-  const uploadFile = async (file: File, folder: string): Promise<string> => {
-    if (!user || !storage) throw new Error("Storage not available");
-    const fileName = `${folder}/${user.uid}/${Date.now()}_${file.name}`;
-    const storageRef = ref(storage, fileName);
-    await uploadBytes(storageRef, file);
-    return getDownloadURL(storageRef);
-  };
+    const uploadFile = async (file: File, folder: string): Promise<string> => {
+      if (!user) {
+        throw new Error("User not authenticated. Please log in.");
+      }
+      return await uploadImage(file, folder);
+    };
 
   const handleFileChange = (
     e: React.ChangeEvent<HTMLInputElement>,
@@ -274,19 +270,19 @@ export default function TenantsPage() {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // Image files max 100KB
-    const maxImageSize = 100 * 1024; // 100KB
-    
-    if (file.size > maxImageSize) {
-      // Show warning dialog
-      setFileWarning({
-        show: true,
-        file: file,
-        type: type,
-      });
-      e.target.value = '';
-      return;
-    }
+     // Image files max 500KB (increased from 100KB)
+     const maxImageSize = 500 * 1024; // 500KB
+     
+     if (file.size > maxImageSize) {
+       // Show warning dialog
+       setFileWarning({
+         show: true,
+         file: file,
+         type: type,
+       });
+       e.target.value = '';
+       return;
+     }
 
     // Validate image type
     if (!file.type.startsWith('image/')) {
@@ -311,37 +307,9 @@ export default function TenantsPage() {
         setPhotoPreview(preview);
         break;
     }
-  };
-  
-  const handleDocumentChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    
-    // Document files max 100KB for optimization
-    const maxDocSize = 100 * 1024; // 100KB
-    
-    if (file.size > maxDocSize) {
-      // Show warning dialog
-      setDocumentWarning({
-        show: true,
-        file: file,
-      });
-      e.target.value = '';
-      return;
-    }
-    
-    // Validate document type
-    const allowedTypes = ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
-    if (!allowedTypes.includes(file.type)) {
-      toast.error("শুধুমাত্র PDF বা Word ফাইল আপলোড করুন");
-      e.target.value = '';
-      return;
-    }
-    
-    setAgreementFile(file);
-  };
+   };
 
-  const handleFileWarningAccept = () => {
+   const handleFileWarningAccept = () => {
     if (!fileWarning.file || !fileWarning.type) return;
     
     // Proceed with upload even though it's large
@@ -369,34 +337,17 @@ export default function TenantsPage() {
   const handleFileWarningReject = () => {
     setFileWarning({ show: false, file: null, type: null });
     toast.error("ফাইল বাতিল করা হয়েছে। আরও একটি ছোট ফাইল চেষ্টা করুন।");
-  };
-
-  const handleDocumentWarningAccept = () => {
-    if (!documentWarning.file) return;
-    
-    // Validate document type
-    const allowedTypes = ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
-    if (!allowedTypes.includes(documentWarning.file.type)) {
-      toast.error("শুধুমাত্র PDF বা Word ফাইল আপলোড করুন");
-      setDocumentWarning({ show: false, file: null });
-      return;
-    }
-    
-    setAgreementFile(documentWarning.file);
-    setDocumentWarning({ show: false, file: null });
-    toast.success("ডকুমেন্ট নির্বাচিত হয়েছে (প্রি-অপ্টিমাইজেশনের জন্য সুপারিশ)");
-  };
-
-  const handleDocumentWarningReject = () => {
-    setDocumentWarning({ show: false, file: null });
-    toast.error("ফাইল বাতিল করা হয়েছে। আরও একটি ছোট ফাইল চেষ্টা করুন।");
-  };
+   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user || !db) return;
+    console.log("[Form] Submit triggered");
 
-    // Check for demo mode
+    if (!user) {
+      toast.error("আপনাকে প্রথমে লগইন করতে হবে।");
+      return;
+    }
+
     if (isDemoUser && !isAdmin) {
       toast.error("Demo mode এ ডাটা সংরক্ষণ করা যায় না। Subscribe করুন।");
       return;
@@ -407,28 +358,32 @@ export default function TenantsPage() {
       return;
     }
 
+    console.log("[Form] Validation passed, starting upload...");
     setIsSubmitting(true);
 
     try {
-      let agreementDocUrl = selectedTenant?.agreementDocUrl || "";
       let nidFrontUrl = selectedTenant?.nidFrontUrl || "";
       let nidBackUrl = selectedTenant?.nidBackUrl || "";
       let photoUrl = selectedTenant?.photoUrl || "";
 
       // Upload files if selected
-      if (agreementFile) {
-        agreementDocUrl = await uploadFile(agreementFile, "agreements");
-      }
       if (nidFrontFile) {
+        console.log("[Upload] Uploading nidFront...");
         nidFrontUrl = await uploadFile(nidFrontFile, "nid-images");
       }
       if (nidBackFile) {
+        console.log("[Upload] Uploading nidBack...");
         nidBackUrl = await uploadFile(nidBackFile, "nid-images");
       }
       if (photoFile) {
+        console.log("[Upload] Uploading photo...");
         photoUrl = await uploadFile(photoFile, "tenant-photos");
       }
 
+      console.log("[Upload] All uploads complete");
+      console.log("[Supabase] Preparing data...");
+
+      const now = new Date().toISOString();
       const tenantData = {
         propertyId: formData.propertyId,
         ownerId: user.uid,
@@ -440,7 +395,6 @@ export default function TenantsPage() {
         nidFrontUrl,
         nidBackUrl,
         photoUrl,
-        agreementDocUrl,
         monthlyRent: parseFloat(formData.monthlyRent) || 0,
         gasCharge: parseFloat(formData.gasCharge) || 0,
         waterCharge: parseFloat(formData.waterCharge) || 0,
@@ -449,21 +403,26 @@ export default function TenantsPage() {
         currentBill: parseFloat(formData.currentBill) || 0,
         advanceAmount: parseFloat(formData.advanceAmount) || 0,
         advanceMonths: parseInt(formData.advanceMonths) || 0,
-        moveInDate: formData.moveInDate
-          ? Timestamp.fromDate(new Date(formData.moveInDate))
-          : serverTimestamp(),
+        moveInDate: formData.moveInDate || null,
         status: formData.status,
-        updatedAt: serverTimestamp(),
+        updatedAt: now,
       };
 
+      console.log("[Supabase] Saving tenant...");
       if (selectedTenant) {
-        await updateDoc(doc(db, "tenants", selectedTenant.id), tenantData);
+        const { error } = await supabase
+          .from("tenants")
+          .update(tenantData)
+          .eq("id", selectedTenant.id);
+        if (error) throw error;
+        console.log("[Supabase] Update successful");
         toast.success("ভাড়াটিয়া আপডেট হয়েছে");
       } else {
-        await addDoc(collection(db, "tenants"), {
-          ...tenantData,
-          createdAt: serverTimestamp(),
-        });
+        const { error } = await supabase
+          .from("tenants")
+          .insert({ ...tenantData, createdAt: now });
+        if (error) throw error;
+        console.log("[Supabase] Create successful");
         toast.success("ভাড়াটিয়া যোগ হয়েছে");
       }
 
@@ -471,14 +430,36 @@ export default function TenantsPage() {
       fetchData();
     } catch (error) {
       console.error("Failed to save tenant:", error);
-      toast.error("সংরক্ষণ করতে সমস্যা হয়েছে");
+
+      let errorMessage = "unknown";
+      if (error instanceof Error) {
+        errorMessage = error.message;
+      } else if (typeof error === "string") {
+        errorMessage = error;
+      } else {
+        errorMessage = JSON.stringify(error);
+      }
+
+      console.log("[Error] Type:", typeof error, "Message:", errorMessage);
+
+      let message = "সংরক্ষণ করতে সমস্যা হয়েছে।";
+
+        if (errorMessage.includes("Storage not available") || errorMessage.includes("Storage কনেকশন")) {
+          message = "স্টোরেজ কানেকশন পাওয়া যায়নি। Supabase কনফিগারেশন চেক করুন।";
+        } else if (errorMessage.includes("permission-denied") || 
+          errorMessage.includes("unauthorized") || 
+          errorMessage.includes("Missing or insufficient permissions")) {
+          message = "আপনার অ্যাকাউন্টে ডাটা লিখের অনুমতি নেই। Supabase policies চেক করুন।";
+        }
+
+      toast.error(message, { duration: 6000 });
     } finally {
       setIsSubmitting(false);
     }
   };
 
   const handleDelete = async () => {
-    if (!selectedTenant || !db) return;
+    if (!selectedTenant) return;
 
     if (isDemoUser && !isAdmin) {
       toast.error("Demo mode এ ডিলিট করা যায় না");
@@ -486,7 +467,12 @@ export default function TenantsPage() {
     }
 
     try {
-      await deleteDoc(doc(db, "tenants", selectedTenant.id));
+      const { error } = await supabase
+        .from("tenants")
+        .delete()
+        .eq("id", selectedTenant.id);
+      if (error) throw error;
+
       toast.success("ভাড়াটিয়া সরানো হয়েছে");
       setIsDeleteDialogOpen(false);
       setSelectedTenant(null);
@@ -924,45 +910,10 @@ export default function TenantsPage() {
                         ))}
                       </SelectContent>
                     </Select>
-                  </Field>
-                </div>
+                   </Field>
+                 </div>
 
-                {/* Agreement Document */}
-                <Field>
-                  <FieldLabel htmlFor="agreement">চুক্তিপত্র (PDF/Doc) - সর্বোচ্চ 3MB</FieldLabel>
-                  <div className="flex items-center gap-2">
-                    <Input
-                      id="agreement"
-                      type="file"
-                      accept=".pdf,.doc,.docx"
-                      onChange={handleDocumentChange}
-                      className="flex-1"
-                    />
-                    {selectedTenant?.agreementDocUrl && (
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="icon"
-                        asChild
-                      >
-                        <a
-                          href={selectedTenant.agreementDocUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                        >
-                          <ExternalLink className="h-4 w-4" />
-                        </a>
-                      </Button>
-                    )}
-                  </div>
-                  {agreementFile && (
-                    <p className="text-sm text-muted-foreground mt-1">
-                      সিলেক্টেড: {agreementFile.name} ({(agreementFile.size / 1024).toFixed(1)}KB)
-                    </p>
-                  )}
-                </Field>
-
-                <div className="flex justify-end gap-2 pt-4">
+                 <div className="flex justify-end gap-2 pt-4">
                   <Button
                     type="button"
                     variant="outline"
@@ -1095,7 +1046,7 @@ export default function TenantsPage() {
                           <MessageSquare className="h-4 w-4 text-primary" />
                         </Button>
                         {/* View Documents Button */}
-                        {(tenant.nidFrontUrl || tenant.nidBackUrl || tenant.photoUrl || tenant.agreementDocUrl) && (
+                        {(tenant.nidFrontUrl || tenant.nidBackUrl || tenant.photoUrl) && (
                           <Button
                             variant="ghost"
                             size="icon"
@@ -1148,14 +1099,14 @@ export default function TenantsPage() {
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>বড় ফাইল সতর্কতা</AlertDialogTitle>
-            <AlertDialogDescription>
-              আপনার ফাইল {fileWarning.file ? `${Math.round(fileWarning.file.size / 1024)}KB` : '?'} এর বিশাল, যা সর্বোচ্চ 100KB এর চেয়ে বেশি। 
-              <br/>
-              <br/>
-              এটি আপলোড করতে আরও সময় লাগবে এবং লোডিং ধীর হতে পারে। 
-              <br/>
-              আপনি কি এগিয়ে যেতে চান?
-            </AlertDialogDescription>
+             <AlertDialogDescription>
+               আপনার ফাইল {fileWarning.file ? `${Math.round(fileWarning.file.size / 1024)}KB` : '?'} এর বিশাল, যা সর্বোচ্চ 500KB এর চেয়ে বেশি। 
+               <br/>
+               <br/>
+               এটি আপলোড করতে আরও সময় লাগবে এবং লোডিং ধীর হতে পারে। 
+               <br/>
+               আপনি কি এগিয়ে যেতে চান?
+             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel onClick={handleFileWarningReject}>
@@ -1166,38 +1117,9 @@ export default function TenantsPage() {
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
-      </AlertDialog>
+       </AlertDialog>
 
-      {/* Document File Warning Dialog */}
-      <AlertDialog open={documentWarning.show} onOpenChange={(open) => {
-        if (!open) {
-          setDocumentWarning({ show: false, file: null });
-        }
-      }}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>বড় ডকুমেন্ট সতর্কতা</AlertDialogTitle>
-            <AlertDialogDescription>
-              আপনার ডকুমেন্ট {documentWarning.file ? `${Math.round(documentWarning.file.size / 1024)}KB` : '?'} এর বিশাল, যা সর্বোচ্চ 100KB এর চেয়ে বেশি। 
-              <br/>
-              <br/>
-              এটি আপলোড করতে আরও সময় লাগবে এবং লোডিং ধীর হতে পারে। 
-              <br/>
-              আপনি কি এগিয়ে যেতে চান?
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel onClick={handleDocumentWarningReject}>
-              অন্য ফাইল বেছে নিন
-            </AlertDialogCancel>
-            <AlertDialogAction onClick={handleDocumentWarningAccept}>
-              এই ফাইল ব্যবহার করুন
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
-      <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+       <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>ভাড়াটিয়া মুছে ফেলুন</AlertDialogTitle>
@@ -1226,7 +1148,7 @@ export default function TenantsPage() {
               {selectedTenant?.name} - ডকুমেন্টস
             </DialogTitle>
             <DialogDescription>
-              আপলোড করা NID, ছবি এবং চুক্তিপত্র দেখুন
+              আপলোড করা NID এবং ছবি দেখুন
             </DialogDescription>
           </DialogHeader>
           
@@ -1311,43 +1233,16 @@ export default function TenantsPage() {
                     </Button>
                   </div>
                 </div>
-              )}
-            </div>
+               )}
+             </div>
 
-            {/* Agreement Document */}
-            {selectedTenant?.agreementDocUrl && (
-              <div>
-                <h4 className="font-medium mb-2 flex items-center gap-2">
-                  <FileText className="h-4 w-4" />
-                  চুক্তিপত্র
-                </h4>
-                <div className="p-4 border rounded-lg bg-muted/50 flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="p-2 bg-primary/10 rounded">
-                      <FileText className="h-6 w-6 text-primary" />
-                    </div>
-                    <div>
-                      <p className="font-medium">Agreement Document</p>
-                      <p className="text-sm text-muted-foreground">PDF/Word Document</p>
-                    </div>
-                  </div>
-                  <Button asChild>
-                    <a href={selectedTenant.agreementDocUrl} target="_blank" rel="noopener noreferrer">
-                      <ExternalLink className="h-4 w-4 mr-2" />
-                      ডাউনলোড/দেখুন
-                    </a>
-                  </Button>
-                </div>
-              </div>
-            )}
-
-            {/* No documents message */}
-            {!selectedTenant?.photoUrl && !selectedTenant?.nidFrontUrl && !selectedTenant?.nidBackUrl && !selectedTenant?.agreementDocUrl && (
-              <div className="text-center py-8 text-muted-foreground">
-                <ImageIcon className="h-12 w-12 mx-auto mb-2 opacity-50" />
-                <p>কোনো ডকুমেন্ট আপলোড করা হয়নি</p>
-              </div>
-            )}
+             {/* No documents message */}
+             {!selectedTenant?.photoUrl && !selectedTenant?.nidFrontUrl && !selectedTenant?.nidBackUrl && (
+               <div className="text-center py-8 text-muted-foreground">
+                 <ImageIcon className="h-12 w-12 mx-auto mb-2 opacity-50" />
+                 <p>কোনো ডকুমেন্ট আপলোড করা হয়নি</p>
+               </div>
+             )}
           </div>
         </DialogContent>
       </Dialog>

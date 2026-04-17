@@ -1,18 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import {
-  collection,
-  query,
-  where,
-  getDocs,
-  addDoc,
-  updateDoc,
-  deleteDoc,
-  doc,
-  serverTimestamp,
-} from "firebase/firestore";
-import { db } from "@/lib/firebase";
+import { supabase } from "@/lib/supabaseClient";
 import { useAuth } from "@/contexts/auth-context";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -117,45 +106,36 @@ export default function TicketsPage() {
   const [formData, setFormData] = useState<TicketFormData>(initialFormData);
 
   const fetchData = async () => {
-    if (!user || !db) return;
+    if (!user) return;
 
     try {
       // Fetch properties
-      const propertiesQuery = query(
-        collection(db, "properties"),
-        where("ownerId", "==", user.uid)
-      );
-      const propertiesSnapshot = await getDocs(propertiesQuery);
-      const propertiesData = propertiesSnapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-      })) as Property[];
-      setProperties(propertiesData);
+      const { data: propertiesData, error: propertiesError } = await supabase
+        .from("properties")
+        .select("*")
+        .eq("ownerId", user.uid);
+
+      if (propertiesError) throw propertiesError;
+      setProperties(propertiesData || []);
 
       // Fetch tenants
-      const tenantsQuery = query(
-        collection(db, "tenants"),
-        where("ownerId", "==", user.uid)
-      );
-      const tenantsSnapshot = await getDocs(tenantsQuery);
-      const tenantsData = tenantsSnapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-      })) as Tenant[];
-      setTenants(tenantsData);
+      const { data: tenantsData, error: tenantsError } = await supabase
+        .from("tenants")
+        .select("*")
+        .eq("ownerId", user.uid);
+
+      if (tenantsError) throw tenantsError;
+      setTenants(tenantsData || []);
 
       // Fetch tickets
-      const ticketsQuery = query(
-        collection(db, "tickets"),
-        where("ownerId", "==", user.uid)
-      );
-      const ticketsSnapshot = await getDocs(ticketsQuery);
-      const ticketsData = ticketsSnapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-      })) as TicketType[];
-      setTickets(ticketsData.sort((a, b) => 
-        b.createdAt.toMillis() - a.createdAt.toMillis()
+      const { data: ticketsData, error: ticketsError } = await supabase
+        .from("tickets")
+        .select("*")
+        .eq("ownerId", user.uid);
+
+      if (ticketsError) throw ticketsError;
+      setTickets((ticketsData || []).sort((a, b) =>
+        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
       ));
     } catch (error) {
       console.error("Failed to fetch data:", error);
@@ -188,7 +168,7 @@ export default function TicketsPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user || !db) return;
+    if (!user) return;
 
     if (!formData.tenantId) {
       toast.error("Please select a tenant");
@@ -201,6 +181,7 @@ export default function TicketsPage() {
       const tenant = tenants.find((t) => t.id === formData.tenantId);
       if (!tenant) throw new Error("Tenant not found");
 
+      const now = new Date().toISOString();
       const ticketData = {
         tenantId: formData.tenantId,
         tenantName: tenant.name,
@@ -210,17 +191,21 @@ export default function TicketsPage() {
         description: formData.description,
         category: formData.category,
         status: formData.status,
-        updatedAt: serverTimestamp(),
+        updatedAt: now,
       };
 
       if (selectedTicket) {
-        await updateDoc(doc(db, "tickets", selectedTicket.id), ticketData);
+        const { error } = await supabase
+          .from("tickets")
+          .update(ticketData)
+          .eq("id", selectedTicket.id);
+        if (error) throw error;
         toast.success("Ticket updated successfully");
       } else {
-        await addDoc(collection(db, "tickets"), {
-          ...ticketData,
-          createdAt: serverTimestamp(),
-        });
+        const { error } = await supabase
+          .from("tickets")
+          .insert({ ...ticketData, createdAt: now });
+        if (error) throw error;
         toast.success("Ticket created successfully");
       }
 
@@ -235,10 +220,14 @@ export default function TicketsPage() {
   };
 
   const handleDelete = async () => {
-    if (!selectedTicket || !db) return;
+    if (!selectedTicket) return;
 
     try {
-      await deleteDoc(doc(db, "tickets", selectedTicket.id));
+      const { error } = await supabase
+        .from("tickets")
+        .delete()
+        .eq("id", selectedTicket.id);
+      if (error) throw error;
       toast.success("Ticket deleted successfully");
       setIsDeleteDialogOpen(false);
       setSelectedTicket(null);
@@ -497,9 +486,9 @@ export default function TicketsPage() {
                       </TableCell>
                       <TableCell className="capitalize">{ticket.category}</TableCell>
                       <TableCell>{getStatusBadge(ticket.status)}</TableCell>
-                      <TableCell className="text-muted-foreground">
-                        {ticket.createdAt.toDate().toLocaleDateString()}
-                      </TableCell>
+                       <TableCell className="text-muted-foreground">
+                         {new Date(ticket.createdAt).toLocaleDateString()}
+                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-2">
                           <Button

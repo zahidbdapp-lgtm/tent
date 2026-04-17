@@ -1,17 +1,16 @@
-import { Timestamp } from "firebase/firestore";
 import { Property, Tenant, Invoice, DashboardStats, Expense } from "@/types";
 
-// Helper to create timestamps for demo data
-const createTimestamp = (daysAgo: number = 0): Timestamp => {
+// Helper to create ISO date strings for demo data
+const createISODate = (daysAgo: number = 0): string => {
   const date = new Date();
   date.setDate(date.getDate() - daysAgo);
-  return Timestamp.fromDate(date);
+  return date.toISOString();
 };
 
-const createFutureTimestamp = (daysAhead: number): Timestamp => {
+const createFutureISODate = (daysAhead: number): string => {
   const date = new Date();
   date.setDate(date.getDate() + daysAhead);
-  return Timestamp.fromDate(date);
+  return date.toISOString();
 };
 
 // Demo Properties
@@ -23,8 +22,8 @@ export const demoProperties: Property[] = [
     address: "রোড ১১, গুলশান-২, ঢাকা-১২১২",
     totalUnits: 6,
     propertyType: "apartment",
-    createdAt: createTimestamp(180),
-    updatedAt: createTimestamp(30),
+    createdAt: createISODate(180),
+    updatedAt: createISODate(30),
   },
   {
     id: "demo-prop-2",
@@ -33,8 +32,8 @@ export const demoProperties: Property[] = [
     address: "বনানী, ব্লক-এফ, ঢাকা-১২১৩",
     totalUnits: 4,
     propertyType: "house",
-    createdAt: createTimestamp(120),
-    updatedAt: createTimestamp(15),
+    createdAt: createISODate(120),
+    updatedAt: createISODate(15),
   },
   {
     id: "demo-prop-3",
@@ -43,8 +42,8 @@ export const demoProperties: Property[] = [
     address: "ধানমন্ডি ২৭, ঢাকা-১২০৫",
     totalUnits: 8,
     propertyType: "apartment",
-    createdAt: createTimestamp(90),
-    updatedAt: createTimestamp(5),
+    createdAt: createISODate(90),
+    updatedAt: createISODate(5),
   },
 ];
 
@@ -70,10 +69,10 @@ export const demoTenants: Tenant[] = [
     currentBill: 0,
     advanceAmount: 50000,
     advanceMonths: 2,
-    moveInDate: createTimestamp(365),
+    moveInDate: createISODate(365),
     status: "active",
-    createdAt: createTimestamp(365),
-    updatedAt: createTimestamp(30),
+    createdAt: createISODate(365),
+    updatedAt: createISODate(30),
   },
   {
     id: "demo-tenant-2",
@@ -95,10 +94,10 @@ export const demoTenants: Tenant[] = [
     currentBill: 26000,
     advanceAmount: 44000,
     advanceMonths: 2,
-    moveInDate: createTimestamp(300),
+    moveInDate: createISODate(300),
     status: "active",
-    createdAt: createTimestamp(300),
-    updatedAt: createTimestamp(15),
+    createdAt: createISODate(300),
+    updatedAt: createISODate(15),
   },
   {
     id: "demo-tenant-3",
@@ -120,10 +119,10 @@ export const demoTenants: Tenant[] = [
     currentBill: 0,
     advanceAmount: 70000,
     advanceMonths: 2,
-    moveInDate: createTimestamp(200),
+    moveInDate: createISODate(200),
     status: "active",
-    createdAt: createTimestamp(200),
-    updatedAt: createTimestamp(10),
+    createdAt: createISODate(200),
+    updatedAt: createISODate(10),
   },
   {
     id: "demo-tenant-4",
@@ -145,10 +144,10 @@ export const demoTenants: Tenant[] = [
     currentBill: 21100,
     advanceAmount: 36000,
     advanceMonths: 2,
-    moveInDate: createTimestamp(150),
+    moveInDate: createISODate(150),
     status: "active",
-    createdAt: createTimestamp(150),
-    updatedAt: createTimestamp(5),
+    createdAt: createISODate(150),
+    updatedAt: createISODate(5),
   },
   {
     id: "demo-tenant-5",
@@ -170,10 +169,10 @@ export const demoTenants: Tenant[] = [
     currentBill: 0,
     advanceAmount: 40000,
     advanceMonths: 2,
-    moveInDate: createTimestamp(100),
+    moveInDate: createISODate(100),
     status: "active",
-    createdAt: createTimestamp(100),
-    updatedAt: createTimestamp(2),
+    createdAt: createISODate(100),
+    updatedAt: createISODate(2),
   },
 ];
 
@@ -196,15 +195,15 @@ export const demoInvoices: Invoice[] = [
     totalAmount: 30500,
     paidAmount: 30500,
     dueAmount: 0,
-    dueDate: createTimestamp(5),
+    dueDate: createISODate(5),
     status: "paid",
-    paymentDate: createTimestamp(3),
+    paymentDate: createISODate(3),
     paymentMethod: "bKash",
     receiptUrl: null,
     emailSent: true,
-    emailSentAt: createTimestamp(3),
-    createdAt: createTimestamp(30),
-    updatedAt: createTimestamp(3),
+    emailSentAt: createISODate(3),
+    createdAt: createISODate(30),
+    updatedAt: createISODate(3),
   },
   {
     id: "demo-inv-2",
@@ -223,15 +222,15 @@ export const demoInvoices: Invoice[] = [
     totalAmount: 27200,
     paidAmount: 0,
     dueAmount: 27200,
-    dueDate: createTimestamp(-5),
+    dueDate: createISODate(-5),
     status: "overdue",
     paymentDate: null,
     paymentMethod: null,
     receiptUrl: null,
     emailSent: true,
-    emailSentAt: createTimestamp(10),
-    createdAt: createTimestamp(30),
-    updatedAt: createTimestamp(1),
+    emailSentAt: createISODate(10),
+    createdAt: createISODate(30),
+    updatedAt: createISODate(1),
   },
   {
     id: "demo-inv-3",
@@ -250,15 +249,15 @@ export const demoInvoices: Invoice[] = [
     totalAmount: 43000,
     paidAmount: 43000,
     dueAmount: 0,
-    dueDate: createFutureTimestamp(5),
+    dueDate: createFutureISODate(5),
     status: "paid",
-    paymentDate: createTimestamp(1),
+    paymentDate: createISODate(1),
     paymentMethod: "Nagad",
     receiptUrl: null,
     emailSent: true,
-    emailSentAt: createTimestamp(1),
-    createdAt: createTimestamp(25),
-    updatedAt: createTimestamp(1),
+    emailSentAt: createISODate(1),
+    createdAt: createISODate(25),
+    updatedAt: createISODate(1),
   },
   {
     id: "demo-inv-4",
@@ -277,15 +276,15 @@ export const demoInvoices: Invoice[] = [
     totalAmount: 22100,
     paidAmount: 10000,
     dueAmount: 12100,
-    dueDate: createFutureTimestamp(10),
+    dueDate: createFutureISODate(10),
     status: "partial",
-    paymentDate: createTimestamp(2),
+    paymentDate: createISODate(2),
     paymentMethod: "Bank Transfer",
     receiptUrl: null,
     emailSent: true,
-    emailSentAt: createTimestamp(2),
-    createdAt: createTimestamp(20),
-    updatedAt: createTimestamp(2),
+    emailSentAt: createISODate(2),
+    createdAt: createISODate(20),
+    updatedAt: createISODate(2),
   },
   {
     id: "demo-inv-5",
@@ -304,15 +303,15 @@ export const demoInvoices: Invoice[] = [
     totalAmount: 24200,
     paidAmount: 24200,
     dueAmount: 0,
-    dueDate: createFutureTimestamp(15),
+    dueDate: createFutureISODate(15),
     status: "paid",
-    paymentDate: createTimestamp(0),
+    paymentDate: createISODate(0),
     paymentMethod: "Cash",
     receiptUrl: null,
     emailSent: false,
     emailSentAt: null,
-    createdAt: createTimestamp(15),
-    updatedAt: createTimestamp(0),
+    createdAt: createISODate(15),
+    updatedAt: createISODate(0),
   },
 ];
 
@@ -327,9 +326,9 @@ export const demoExpenses: Expense[] = [
     category: "maintenance",
     description: "লিফট মেরামত",
     amount: 15000,
-    date: createTimestamp(10),
-    createdAt: createTimestamp(10),
-    updatedAt: createTimestamp(10),
+    date: createISODate(10),
+    createdAt: createISODate(10),
+    updatedAt: createISODate(10),
   },
   {
     id: "demo-exp-2",
@@ -340,9 +339,9 @@ export const demoExpenses: Expense[] = [
     category: "service",
     description: "মাসিক সার্ভিস চার্জ (কমন এরিয়া)",
     amount: 8000,
-    date: createTimestamp(5),
-    createdAt: createTimestamp(5),
-    updatedAt: createTimestamp(5),
+    date: createISODate(5),
+    createdAt: createISODate(5),
+    updatedAt: createISODate(5),
   },
   {
     id: "demo-exp-3",
@@ -353,9 +352,9 @@ export const demoExpenses: Expense[] = [
     category: "utility",
     description: "বিদ্যুৎ বিল (কমন)",
     amount: 5000,
-    date: createTimestamp(7),
-    createdAt: createTimestamp(7),
-    updatedAt: createTimestamp(7),
+    date: createISODate(7),
+    createdAt: createISODate(7),
+    updatedAt: createISODate(7),
   },
   {
     id: "demo-exp-4",
@@ -366,9 +365,9 @@ export const demoExpenses: Expense[] = [
     category: "maintenance",
     description: "প্লাম্বিং মেরামত",
     amount: 3500,
-    date: createTimestamp(15),
-    createdAt: createTimestamp(15),
-    updatedAt: createTimestamp(15),
+    date: createISODate(15),
+    createdAt: createISODate(15),
+    updatedAt: createISODate(15),
   },
   {
     id: "demo-exp-5",
@@ -379,9 +378,9 @@ export const demoExpenses: Expense[] = [
     category: "tax",
     description: "সিটি কর্পোরেশন ট্যাক্স",
     amount: 25000,
-    date: createTimestamp(45),
-    createdAt: createTimestamp(45),
-    updatedAt: createTimestamp(45),
+    date: createISODate(45),
+    createdAt: createISODate(45),
+    updatedAt: createISODate(45),
   },
 ];
 

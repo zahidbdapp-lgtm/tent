@@ -3,8 +3,7 @@
 import { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { db } from "@/lib/firebase";
-import { collection, getDocs, query, where, Timestamp } from "firebase/firestore";
+import { supabase } from "@/lib/supabaseClient";
 import { AdminDashboardStats, PRICING_PLANS } from "@/types";
 import {
   Users,
@@ -26,42 +25,40 @@ export default function AdminOverviewPage() {
 
   const fetchStats = async () => {
       try {
-        if (!db) {
-          setLoading(false);
-          return;
-        }
         // Fetch users
-        const usersSnapshot = await getDocs(collection(db, "users"));
-        const users = usersSnapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() } as any));
+        const { data: users, error } = await supabase
+          .from("users")
+          .select("*");
 
-        const totalUsers = users.length;
-        const paidUsers = users.filter(
+        if (error) throw error;
+
+        const totalUsers = users?.length || 0;
+        const paidUsers = users?.filter(
           (u) => u.subscriptionStatus === "active"
-        ).length;
-        const demoUsers = users.filter(
+        ).length || 0;
+        const demoUsers = users?.filter(
           (u) => u.subscriptionStatus === "demo"
-        ).length;
-        const pendingPaymentUsersCount = users.filter(
+        ).length || 0;
+        const pendingPaymentUsersCount = users?.filter(
           (u) => u.subscriptionStatus === "payment_pending"
-        ).length;
+        ).length || 0;
 
         setPendingPaymentUsers(pendingPaymentUsersCount);
 
-        // Calculate total revenue from active users' payment amounts
-        // (once a user is activated, revenue is recorded even if status changes)
+        // Calculate total revenue
         const totalRevenue = users
-          .filter((u) => u.subscriptionStartDate && (u.subscriptionStatus === "active" || u.subscriptionStatus === "payment_due"))
-          .reduce((sum, u) => sum + (u.paymentAmount || 0), 0);
+          ?.filter((u) => u.subscriptionStartDate && (u.subscriptionStatus === "active" || u.subscriptionStatus === "payment_due"))
+          .reduce((sum, u) => sum + (u.paymentAmount || 0), 0) || 0;
 
         // Calculate monthly revenue (users activated this month)
         const now = new Date();
         const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
         const monthlyRevenue = users
-          .filter((u) => {
-            const startDate = u.subscriptionStartDate?.toDate();
+          ?.filter((u) => {
+            const startDate = u.subscriptionStartDate ? new Date(u.subscriptionStartDate) : null;
             return startDate && startDate >= startOfMonth && (u.subscriptionStatus === "active" || u.subscriptionStatus === "payment_due");
           })
-          .reduce((sum, u) => sum + (u.paymentAmount || 0), 0);
+          .reduce((sum, u) => sum + (u.paymentAmount || 0), 0) || 0;
 
         setStats({
           totalUsers,
@@ -77,7 +74,7 @@ export default function AdminOverviewPage() {
         setLoading(false);
         setRefreshing(false);
       }
-  };
+    };
 
   useEffect(() => {
     fetchStats();

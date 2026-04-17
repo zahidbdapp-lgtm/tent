@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/auth-context";
@@ -9,7 +9,8 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { FieldGroup, Field, FieldLabel } from "@/components/ui/field";
 import { Spinner } from "@/components/ui/spinner";
-import { Building2, Mail, Lock, CheckCircle, Eye, AlertCircle } from "lucide-react";
+import { Building2, Mail, Lock, CheckCircle, Eye, AlertCircle, ArrowLeft } from "lucide-react";
+
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
@@ -18,43 +19,57 @@ export default function LoginPage() {
   const [success, setSuccess] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
-  const { signIn, isConfigured, enterDemoMode } = useAuth();
+  const { signIn, isConfigured, enterDemoMode, userStatusMessage, userData } = useAuth();
   const router = useRouter();
 
-  if (!isConfigured) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-background p-4">
-        <Card className="w-full max-w-md">
-          <CardHeader className="text-center">
-            <div className="flex items-center justify-center gap-2 mb-4">
-              <Building2 className="h-8 w-8 text-primary" />
-              <span className="text-2xl font-bold text-foreground">PropManager</span>
-            </div>
-            <CardTitle className="text-xl text-amber-600">Firebase Setup Required</CardTitle>
-            <CardDescription className="mt-2">
-              Please add your Firebase environment variables to use this app.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="bg-muted p-4 rounded-lg text-sm">
-              <p className="font-medium mb-2">Required Variables:</p>
-              <ul className="space-y-1 text-muted-foreground font-mono text-xs">
-                <li>NEXT_PUBLIC_FIREBASE_API_KEY</li>
-                <li>NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN</li>
-                <li>NEXT_PUBLIC_FIREBASE_PROJECT_ID</li>
-                <li>NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET</li>
-                <li>NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID</li>
-                <li>NEXT_PUBLIC_FIREBASE_APP_ID</li>
-              </ul>
-            </div>
-            <p className="text-sm text-muted-foreground">
-              Click the Settings icon (gear) in the top right, then go to Vars to add these.
-            </p>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
+  useEffect(() => {
+    if (userStatusMessage && !statusMessage) {
+      setStatusMessage(userStatusMessage);
+    }
+  }, [userStatusMessage]);
+
+  useEffect(() => {
+    if (userStatusMessage && !statusMessage) {
+      setStatusMessage(userStatusMessage);
+    }
+  }, [userStatusMessage]);
+
+  useEffect(() => {
+    if (userStatusMessage && !statusMessage) {
+      setStatusMessage(userStatusMessage);
+    }
+  }, [userStatusMessage]);
+
+   if (!isConfigured) {
+     return (
+       <div className="min-h-screen flex items-center justify-center bg-background p-4">
+         <Card className="w-full max-w-md">
+           <CardHeader className="text-center">
+             <div className="flex items-center justify-center gap-2 mb-4">
+               <Building2 className="h-8 w-8 text-primary" />
+               <span className="text-2xl font-bold text-foreground">PropManager</span>
+             </div>
+             <CardTitle className="text-xl text-amber-600">Supabase Setup Required</CardTitle>
+             <CardDescription className="mt-2">
+               Please add your Supabase environment variables to use this app.
+             </CardDescription>
+           </CardHeader>
+           <CardContent className="space-y-4">
+             <div className="bg-muted p-4 rounded-lg text-sm">
+               <p className="font-medium mb-2">Required Variables:</p>
+               <ul className="space-y-1 text-muted-foreground font-mono text-xs">
+                 <li>NEXT_PUBLIC_SUPABASE_URL</li>
+                 <li>NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY</li>
+               </ul>
+             </div>
+             <p className="text-sm text-muted-foreground">
+               Click the Settings icon (gear) in the top right, then go to Vars to add these.
+             </p>
+           </CardContent>
+         </Card>
+       </div>
+     );
+   }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -73,28 +88,33 @@ export default function LoginPage() {
           router.push("/admin");
         }, 1000);
       } else {
+        // Update status message from auth context
+        if (userStatusMessage) {
+          setStatusMessage(userStatusMessage);
+        }
+        
         setSuccess("সফলভাবে লগইন হয়েছে! Dashboard এ যাচ্ছে...");
         setTimeout(() => {
           router.push("/dashboard");
         }, 1000);
       }
-    } catch (err) {
-      const firebaseError = err as { code?: string };
-      if (firebaseError.code === "auth/user-not-found") {
-        setError("এই ইমেইল দিয়ে কোনো একাউন্ট নেই।");
-      } else if (firebaseError.code === "auth/wrong-password") {
-        setError("পাসওয়ার্ড ভুল হয়েছে।");
-      } else if (firebaseError.code === "auth/invalid-email") {
-        setError("ইমেইল ফরম্যাট সঠিক নয়।");
-      } else if (firebaseError.code === "auth/too-many-requests") {
-        setError("অনেকবার চেষ্টা করেছেন। কিছুক্ষণ পর আবার চেষ্টা করুন।");
-      } else if (firebaseError.code === "auth/invalid-credential") {
-        setError("ইমেইল বা পাসওয়ার্ড ভুল হয়েছে।");
-      } else {
-        setError("লগইন করতে সমস্যা হয়েছে। আবার চেষ্টা করুন।");
-      }
-      console.error(err);
-    } finally {
+     } catch (err) {
+       const authError = err as { code?: string };
+       if (authError.code === "auth/user-not-found") {
+         setError("এই ইমেইল দিয়ে কোনো একাউন্ট নেই।");
+       } else if (authError.code === "auth/wrong-password") {
+         setError("পাসওয়ার্ড ভুল হয়েছে।");
+       } else if (authError.code === "auth/invalid-email") {
+         setError("ইমেইল ফরম্যাট সঠিক নয়।");
+       } else if (authError.code === "auth/too-many-requests") {
+         setError("অনেকবার চেষ্টা করেছেন। কিছুক্ষণ পর আবার চেষ্টা করুন।");
+       } else if (authError.code === "auth/invalid-credential") {
+         setError("ইমেইল বা পাসওয়ার্ড ভুল হয়েছে।");
+       } else {
+         setError("লগইন করতে সমস্যা হয়েছে। আবার চেষ্টা করুন।");
+       }
+       console.error(err);
+     } finally {
       setIsLoading(false);
     }
   };
@@ -103,18 +123,28 @@ export default function LoginPage() {
     router.push("/demo");
   };
 
+  const handleGoHome = () => {
+    router.push("/");
+  };
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
       <div className="w-full max-w-md">
-        <div className="flex flex-col items-center mb-8">
-          <div className="flex items-center gap-2 mb-2">
-            <Building2 className="h-8 w-8 text-primary" />
-            <span className="text-2xl font-bold text-foreground">PropManager</span>
+        <div className="flex items-center justify-between mb-8">
+          <button
+            onClick={handleGoHome}
+            className="flex items-center gap-1 text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            <span className="text-sm">Home</span>
+          </button>
+          <div className="flex items-center gap-2">
+            <Building2 className="h-6 w-6 text-primary" />
+            <span className="text-xl font-bold text-foreground">PropManager</span>
           </div>
-          <p className="text-muted-foreground text-sm">Property Management System</p>
-        </div>
+         </div>
 
-        <Card>
+         <Card>
           <CardHeader className="text-center">
             <CardTitle className="text-xl">Welcome back</CardTitle>
             <CardDescription>আপনার একাউন্টে লগইন করুন</CardDescription>

@@ -1,4 +1,4 @@
-import { Timestamp } from "firebase/firestore";
+
 
 export type UserRole = "landlord" | "admin";
 export type SubscriptionStatus = "demo" | "active" | "payment_pending" | "payment_due" | "banned";
@@ -12,16 +12,17 @@ export interface User {
   role: UserRole;
   subscriptionStatus: SubscriptionStatus;
   subscriptionPlan: SubscriptionPlan | null;
-  subscriptionStartDate: Timestamp | null;
-  subscriptionExpiry: Timestamp | null;
+  subscriptionStartDate: string | null;
+  subscriptionExpiry: string | null;
   // Payment info for registration
   paymentMethod: PaymentMethod | null;
   paymentNumber: string | null;
   paymentTransactionId: string | null;
   paymentAmount: number | null;
-  paymentDate: Timestamp | null;
-  createdAt: Timestamp;
-  updatedAt: Timestamp;
+  paymentDate: string | null;
+  rejectionReason: string | null;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export type PropertyType = "apartment" | "house" | "commercial";
@@ -33,8 +34,8 @@ export interface Property {
   address: string;
   totalUnits: number;
   propertyType: PropertyType;
-  createdAt: Timestamp;
-  updatedAt: Timestamp;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export type TenantStatus = "active" | "inactive" | "pending";
@@ -60,10 +61,10 @@ export interface Tenant {
   currentBill: number;
   advanceAmount: number;
   advanceMonths: number;
-  moveInDate: Timestamp;
+  moveInDate: string;
   status: TenantStatus;
-  createdAt: Timestamp;
-  updatedAt: Timestamp;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export type InvoiceStatus = "paid" | "partial" | "unpaid" | "overdue";
@@ -85,15 +86,15 @@ export interface Invoice {
   totalAmount: number;
   paidAmount: number;
   dueAmount: number;
-  dueDate: Timestamp;
+  dueDate: string;
   status: InvoiceStatus;
-  paymentDate: Timestamp | null;
+  paymentDate: string | null;
   paymentMethod: string | null;
   receiptUrl: string | null;
   emailSent: boolean;
-  emailSentAt: Timestamp | null;
-  createdAt: Timestamp;
-  updatedAt: Timestamp;
+  emailSentAt: string | null;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export type NoticePriority = "low" | "medium" | "high";
@@ -105,8 +106,8 @@ export interface Notice {
   title: string;
   content: string;
   priority: NoticePriority;
-  createdAt: Timestamp;
-  expiresAt: Timestamp;
+  createdAt: string;
+  expiresAt: string;
 }
 
 export type TicketCategory = "maintenance" | "complaint" | "inquiry" | "other";
@@ -122,8 +123,8 @@ export interface Ticket {
   description: string;
   category: TicketCategory;
   status: TicketStatus;
-  createdAt: Timestamp;
-  updatedAt: Timestamp;
+  createdAt: string;
+  updatedAt: string;
 }
 
 // Payment Request Types
@@ -139,10 +140,12 @@ export interface PaymentRequest {
   amount: number;
   paymentMethod: PaymentMethod;
   transactionId: string;
+  paymentNumber: string;
+  paymentDate: string;
   screenshotUrl: string;
   status: PaymentRequestStatus;
-  createdAt: Timestamp;
-  processedAt: Timestamp | null;
+  createdAt: string;
+  processedAt: string | null;
   processedBy: string | null;
   rejectionReason: string | null;
 }
@@ -159,9 +162,9 @@ export interface Expense {
   category: ExpenseCategory;
   description: string;
   amount: number;
-  date: Timestamp;
-  createdAt: Timestamp;
-  updatedAt: Timestamp;
+  date: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 // Form types for creating/updating

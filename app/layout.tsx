@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import { Geist, Geist_Mono } from 'next/font/google'
 import { Analytics } from '@vercel/analytics/next'
 import { AuthProvider } from '@/contexts/auth-context'
+import { ThemeProvider } from '@/components/theme-provider'
 import { Toaster } from '@/components/ui/sonner'
 import './globals.css'
 
@@ -36,15 +37,17 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode
 }>) {
-  return (
-    <html lang="en" className="bg-background">
-      <body className="font-sans antialiased" suppressHydrationWarning>
-        <AuthProvider>
-          {children}
-          <Toaster />
-        </AuthProvider>
-        {process.env.NODE_ENV === 'production' && <Analytics />}
-      </body>
-    </html>
-  )
+   return (
+     <html lang="en" className="bg-background" suppressHydrationWarning>
+       <body className="font-sans antialiased" suppressHydrationWarning>
+         <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
+           <AuthProvider>
+             {children}
+             <Toaster />
+           </AuthProvider>
+         </ThemeProvider>
+         {process.env.NODE_ENV === 'production' && <Analytics />}
+       </body>
+     </html>
+   )
 }

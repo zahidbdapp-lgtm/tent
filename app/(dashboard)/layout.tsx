@@ -104,61 +104,66 @@ export default function DashboardLayout({
 
   // Check if user cannot access dashboard (pending/banned/payment_due)
   if (user && !canAccessDashboard && !isDemoMode) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-background p-4">
-        <Card className="w-full max-w-md">
-          <CardHeader className="text-center">
-            <div className="w-16 h-16 mx-auto mb-4 rounded-full flex items-center justify-center bg-destructive/10">
-              {userData?.subscriptionStatus === "banned" ? (
-                <Ban className="h-8 w-8 text-destructive" />
-              ) : userData?.subscriptionStatus === "payment_pending" ? (
-                <Clock className="h-8 w-8 text-warning" />
-              ) : (
-                <AlertCircle className="h-8 w-8 text-warning" />
-              )}
-            </div>
-            <CardTitle className="text-xl">
-              {userData?.subscriptionStatus === "banned" 
-                ? "একাউন্ট বন্ধ" 
-                : userData?.subscriptionStatus === "payment_pending"
-                ? "অনুমোদনের অপেক্ষায়"
-                : "Access সীমিত"
-              }
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4 text-center">
-            <p className="text-muted-foreground">{userStatusMessage}</p>
-            
-            {userData?.subscriptionStatus === "payment_pending" && (
-              <div className="bg-muted p-4 rounded-lg text-sm text-left">
-                <p className="font-medium mb-2">আপনার তথ্য:</p>
-                <div className="space-y-1 text-muted-foreground">
-                  <p>Email: {userData.email}</p>
-                  <p>Plan: {userData.subscriptionPlan}</p>
-                  {userData.paymentTransactionId && (
-                    <p>Transaction ID: {userData.paymentTransactionId}</p>
-                  )}
-                </div>
+    // Allow payment_due users to access subscription page to complete payment
+    if (pathname === "/dashboard/subscription" && userData?.subscriptionStatus === "payment_due") {
+      // continue rendering children
+    } else {
+      return (
+        <div className="min-h-screen flex items-center justify-center bg-background p-4">
+          <Card className="w-full max-w-md">
+            <CardHeader className="text-center">
+              <div className="w-16 h-16 mx-auto mb-4 rounded-full flex items-center justify-center bg-destructive/10">
+                {userData?.subscriptionStatus === "banned" ? (
+                  <Ban className="h-8 w-8 text-destructive" />
+                ) : userData?.subscriptionStatus === "payment_pending" ? (
+                  <Clock className="h-8 w-8 text-warning" />
+                ) : (
+                  <AlertCircle className="h-8 w-8 text-warning" />
+                )}
               </div>
-            )}
+              <CardTitle className="text-xl">
+                {userData?.subscriptionStatus === "banned" 
+                  ? "একাউন্ট বন্ধ" 
+                  : userData?.subscriptionStatus === "payment_pending"
+                  ? "অনুমোদনের অপেক্ষায়"
+                  : "Access সীমিত"
+                }
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4 text-center">
+              <p className="text-muted-foreground">{userStatusMessage}</p>
+              
+              {userData?.subscriptionStatus === "payment_pending" && (
+                <div className="bg-muted p-4 rounded-lg text-sm text-left">
+                  <p className="font-medium mb-2">আপনার তথ্য:</p>
+                  <div className="space-y-1 text-muted-foreground">
+                    <p>Email: {userData.email}</p>
+                    <p>Plan: {userData.subscriptionPlan}</p>
+                    {userData.paymentTransactionId && (
+                      <p>Transaction ID: {userData.paymentTransactionId}</p>
+                    )}
+                  </div>
+                </div>
+              )}
 
-            {userData?.subscriptionStatus === "payment_due" && (
-              <Button asChild className="w-full">
-                <Link href="/dashboard/subscription">
-                  <CreditCard className="h-4 w-4 mr-2" />
-                  পেমেন্ট করুন
-                </Link>
+              {userData?.subscriptionStatus === "payment_due" && (
+                <Button asChild className="w-full">
+                  <Link href="/dashboard/subscription">
+                    <CreditCard className="h-4 w-4 mr-2" />
+                    পেমেন্ট করুন
+                  </Link>
+                </Button>
+              )}
+
+              <Button variant="outline" onClick={() => signOut()} className="w-full">
+                <LogOut className="h-4 w-4 mr-2" />
+                Sign Out
               </Button>
-            )}
-
-            <Button variant="outline" onClick={() => signOut()} className="w-full">
-              <LogOut className="h-4 w-4 mr-2" />
-              Sign Out
-            </Button>
-          </CardContent>
-        </Card>
-      </div>
-    );
+            </CardContent>
+          </Card>
+        </div>
+      );
+    }
   }
 
   const handleSignOut = async () => {
