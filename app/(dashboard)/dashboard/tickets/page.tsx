@@ -94,7 +94,7 @@ const statusOptions: { value: TicketStatus; label: string }[] = [
 ];
 
 export default function TicketsPage() {
-  const { user } = useAuth();
+  const { userData } = useAuth();
   const [tickets, setTickets] = useState<TicketType[]>([]);
   const [tenants, setTenants] = useState<Tenant[]>([]);
   const [properties, setProperties] = useState<Property[]>([]);
@@ -113,7 +113,7 @@ export default function TicketsPage() {
       const { data: propertiesData, error: propertiesError } = await supabase
         .from("properties")
         .select("*")
-        .eq("ownerId", user.uid);
+        .eq("ownerId", userData.id);
 
       if (propertiesError) throw propertiesError;
       setProperties(propertiesData || []);
@@ -122,7 +122,7 @@ export default function TicketsPage() {
       const { data: tenantsData, error: tenantsError } = await supabase
         .from("tenants")
         .select("*")
-        .eq("ownerId", user.uid);
+        .eq("ownerId", userData.id);
 
       if (tenantsError) throw tenantsError;
       setTenants(tenantsData || []);
@@ -131,7 +131,7 @@ export default function TicketsPage() {
       const { data: ticketsData, error: ticketsError } = await supabase
         .from("tickets")
         .select("*")
-        .eq("ownerId", user.uid);
+        .eq("ownerId", userData.id);
 
       if (ticketsError) throw ticketsError;
       setTickets((ticketsData || []).sort((a, b) =>
@@ -186,7 +186,7 @@ export default function TicketsPage() {
         tenantId: formData.tenantId,
         tenantName: tenant.name,
         propertyId: tenant.propertyId,
-        ownerId: user.uid,
+        ownerId: userData.id,
         subject: formData.subject,
         description: formData.description,
         category: formData.category,

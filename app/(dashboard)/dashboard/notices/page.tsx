@@ -69,7 +69,7 @@ const priorityOptions: { value: NoticePriority; label: string; icon: React.Eleme
 ];
 
 export default function NoticesPage() {
-  const { user } = useAuth();
+  const { userData } = useAuth();
   const [notices, setNotices] = useState<Notice[]>([]);
   const [properties, setProperties] = useState<Property[]>([]);
   const [loading, setLoading] = useState(true);
@@ -87,7 +87,7 @@ export default function NoticesPage() {
       const { data: propertiesData, error: propertiesError } = await supabase
         .from("properties")
         .select("*")
-        .eq("ownerId", user.uid);
+        .eq("ownerId", userData.id);
 
       if (propertiesError) throw propertiesError;
       setProperties(propertiesData || []);
@@ -96,7 +96,7 @@ export default function NoticesPage() {
       const { data: noticesData, error: noticesError } = await supabase
         .from("notices")
         .select("*")
-        .eq("ownerId", user.uid);
+        .eq("ownerId", userData.id);
 
       if (noticesError) throw noticesError;
       setNotices((noticesData || []).sort((a, b) =>
@@ -146,7 +146,7 @@ export default function NoticesPage() {
       const now = new Date().toISOString();
       const noticeData = {
         propertyId: formData.propertyId,
-        ownerId: user.uid,
+        ownerId: userData.id,
         title: formData.title,
         content: formData.content,
         priority: formData.priority,

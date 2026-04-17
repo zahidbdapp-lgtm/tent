@@ -115,7 +115,7 @@ export default function InvoicesPage() {
   const [formData, setFormData] = useState<InvoiceFormData>(initialFormData);
 
   const fetchData = async () => {
-    if (!user) return;
+    if (!userData) return;
 
     try {
       // Fetch properties
@@ -131,7 +131,7 @@ export default function InvoicesPage() {
       const { data: tenantsData, error: tenantsError } = await supabase
         .from("tenants")
         .select("*")
-        .eq("ownerId", user.uid)
+        .eq("ownerId", userData.id)
         .eq("status", "active");
 
       if (tenantsError) throw tenantsError;
@@ -202,7 +202,7 @@ export default function InvoicesPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user) return;
+    if (!userData) return;
 
     if (!formData.tenantId) {
       toast.error("Please select a tenant");

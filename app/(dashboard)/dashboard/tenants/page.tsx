@@ -119,7 +119,7 @@ const statusOptions: { value: TenantStatus; label: string }[] = [
 ];
 
 export default function TenantsPage() {
-  const { user, isDemoUser, isAdmin } = useAuth();
+  const { userData, isDemoUser, isAdmin } = useAuth();
   const [tenants, setTenants] = useState<Tenant[]>([]);
   const [properties, setProperties] = useState<Property[]>([]);
   const [loading, setLoading] = useState(true);
@@ -170,7 +170,7 @@ export default function TenantsPage() {
       const { data: propertiesData, error: propertiesError } = await supabase
         .from("properties")
         .select("*")
-        .eq("ownerId", user.uid);
+        .eq("ownerId", userData.id);
 
       if (propertiesError) {
         console.error("[fetchData] Properties error:", {
@@ -187,7 +187,7 @@ export default function TenantsPage() {
       const { data: tenantsData, error: tenantsError } = await supabase
         .from("tenants")
         .select("*")
-        .eq("ownerId", user.uid);
+        .eq("ownerId", userData.id);
 
       if (tenantsError) {
         console.error("[fetchData] Tenants error:", {
@@ -386,7 +386,7 @@ export default function TenantsPage() {
       const now = new Date().toISOString();
       const tenantData = {
         propertyId: formData.propertyId,
-        ownerId: user.uid,
+        ownerId: userData.id,
         unitNumber: formData.unitNumber,
         name: formData.name,
         email: formData.email,

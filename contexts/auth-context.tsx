@@ -3,7 +3,7 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from "react";
 import { User as SupabaseUser, Session } from "@supabase/supabase-js";
 import { supabase, isSupabaseConfigured } from "@/lib/supabaseClient";
-import { User } from "@/types";
+import { User, SubscriptionPlan, PaymentMethod } from "@/types";
 
 // Admin credentials (hardcoded as per requirement)
 const ADMIN_EMAIL = "zahid.bdapp2026@gmail.com";
@@ -268,10 +268,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       phone,
       role: "landlord",
       subscriptionStatus: "payment_pending",
-      subscriptionPlan: paymentInfo.plan,
+      subscriptionPlan: paymentInfo.plan as SubscriptionPlan,
       subscriptionStartDate: null,
       subscriptionExpiry: null,
-      paymentMethod: paymentInfo.paymentMethod,
+      paymentMethod: paymentInfo.paymentMethod as PaymentMethod,
       paymentNumber: paymentInfo.paymentNumber,
       paymentTransactionId: paymentInfo.transactionId,
       paymentAmount: paymentInfo.amount,

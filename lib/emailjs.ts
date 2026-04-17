@@ -22,7 +22,7 @@ export async function sendEmail(params: EmailParams): Promise<boolean> {
       return false;
     }
 
-    await emailjs.send(SERVICE_ID, TEMPLATE_ID, params, PUBLIC_KEY);
+    await emailjs.send(SERVICE_ID, TEMPLATE_ID, params as unknown as Record<string, unknown>, PUBLIC_KEY);
     return true;
   } catch (error) {
     console.error("Failed to send email:", error);

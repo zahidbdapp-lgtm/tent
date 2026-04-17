@@ -29,12 +29,12 @@ interface FileInfo {
 }
 
 export default function TenantsFilesPage() {
-  const { user, isDemoUser, isAdmin } = useAuth();
+  const { userData, isDemoUser, isAdmin } = useAuth();
   const [files, setFiles] = useState<FileInfo[]>([]);
   const [loading, setLoading] = useState(true);
 
    useEffect(() => {
-     if (!user) return;
+      if (!userData) return;
 
      const fetchFiles = async () => {
        try {
@@ -82,7 +82,7 @@ export default function TenantsFilesPage() {
          const { data: tenants, error } = await supabase
            .from("tenants")
            .select("*")
-           .eq("ownerId", user.uid);
+           .eq("ownerId", userData.id);
 
          if (error) throw error;
 

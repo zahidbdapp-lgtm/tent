@@ -59,7 +59,7 @@ const propertyTypes: { value: PropertyType; label: string; icon: React.ElementTy
 ];
 
 export default function PropertiesPage() {
-  const { user } = useAuth();
+  const { userData } = useAuth();
   const [properties, setProperties] = useState<Property[]>([]);
   const [loading, setLoading] = useState(true);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -81,7 +81,7 @@ export default function PropertiesPage() {
       const { data, error } = await supabase
         .from("properties")
         .select("*")
-        .eq("ownerId", user.uid);
+        .eq("ownerId", userData.id);
 
       if (error) throw error;
       setProperties(data || []);
@@ -138,7 +138,7 @@ export default function PropertiesPage() {
         // Create new property
         const { error } = await supabase
           .from("properties")
-          .insert({ ...formData, ownerId: user.uid, createdAt: now, updatedAt: now });
+          .insert({ ...formData, ownerId: userData.id, createdAt: now, updatedAt: now });
         if (error) throw error;
         toast.success("Property created successfully");
       }

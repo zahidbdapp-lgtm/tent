@@ -34,31 +34,31 @@ export default function AdminOverviewPage() {
 
         const totalUsers = users?.length || 0;
         const paidUsers = users?.filter(
-          (u) => u.subscriptionStatus === "active"
+          (u: User) => u.subscriptionStatus === "active"
         ).length || 0;
         const demoUsers = users?.filter(
-          (u) => u.subscriptionStatus === "demo"
+          (u: User) => u.subscriptionStatus === "demo"
         ).length || 0;
         const pendingPaymentUsersCount = users?.filter(
-          (u) => u.subscriptionStatus === "payment_pending"
+          (u: User) => u.subscriptionStatus === "payment_pending"
         ).length || 0;
 
         setPendingPaymentUsers(pendingPaymentUsersCount);
 
         // Calculate total revenue
         const totalRevenue = users
-          ?.filter((u) => u.subscriptionStartDate && (u.subscriptionStatus === "active" || u.subscriptionStatus === "payment_due"))
-          .reduce((sum, u) => sum + (u.paymentAmount || 0), 0) || 0;
+          ?.filter((u: User) => u.subscriptionStartDate && (u.subscriptionStatus === "active" || u.subscriptionStatus === "payment_due"))
+          .reduce((sum: number, u: User) => sum + (u.paymentAmount || 0), 0) || 0;
 
         // Calculate monthly revenue (users activated this month)
         const now = new Date();
         const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
         const monthlyRevenue = users
-          ?.filter((u) => {
+          ?.filter((u: User) => {
             const startDate = u.subscriptionStartDate ? new Date(u.subscriptionStartDate) : null;
             return startDate && startDate >= startOfMonth && (u.subscriptionStatus === "active" || u.subscriptionStatus === "payment_due");
           })
-          .reduce((sum, u) => sum + (u.paymentAmount || 0), 0) || 0;
+          .reduce((sum: number, u: User) => sum + (u.paymentAmount || 0), 0) || 0;
 
         setStats({
           totalUsers,
