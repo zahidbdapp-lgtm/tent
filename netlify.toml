@@ -4,6 +4,8 @@
 
 [build.environment]
   NODE_VERSION = "22"
+  NEXT_PUBLIC_SUPABASE_URL = "https://aednrioutehpnrugrilk.supabase.co"
+  NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY = "sb_publishable_SlW9P14v89nZ0q_Ohai5wg_940p5cyx"
 
 [[redirects]]
   from = "/api/*"
