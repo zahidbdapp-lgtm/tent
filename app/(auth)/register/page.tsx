@@ -138,8 +138,8 @@ export default function RegisterPage() {
       // Check for specific error types
       if (message.includes('already registered') || message.includes('email already in use') || message.includes('user already exists')) {
         setError("এই ইমেইল দিয়ে আগে থেকেই একাউন্ট আছে।");
-      } else if (message.includes('email rate limit exceeded') || (message.includes('rate limit') && message.includes('email'))) {
-        setError("অনেকবার চেষ্টা করেছেন। কিছুক্ষণ অপেক্ষা করে আবার চেষ্টা করুন।");
+      } else if (message.includes('email rate limit exceeded') || message.includes('rate limit exceeded')) {
+        setError("ইমেইল রেট লিমিট অতিক্রম করেছে। ১ ঘন্টা অপেক্ষা করে আবার চেষ্টা করুন।");
       } else if (message.includes('invalid email') || message.includes('email address invalid') || message.includes('email format')) {
         setError("ইমেইল ফরম্যাট সঠিক নয়।");
       } else if (message.includes('weak password') || message.includes('password') || message.includes('short')) {

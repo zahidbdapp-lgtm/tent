@@ -99,21 +99,22 @@ export default function LoginPage() {
         }, 1000);
       }
      } catch (err) {
-       const authError = err as { code?: string };
-       if (authError.code === "auth/user-not-found") {
-         setError("এই ইমেইল দিয়ে কোনো একাউন্ট নেই।");
-       } else if (authError.code === "auth/wrong-password") {
-         setError("পাসওয়ার্ড ভুল হয়েছে।");
-       } else if (authError.code === "auth/invalid-email") {
-         setError("ইমেইল ফরম্যাট সঠিক নয়।");
-       } else if (authError.code === "auth/too-many-requests") {
-         setError("অনেকবার চেষ্টা করেছেন। কিছুক্ষণ পর আবার চেষ্টা করুন।");
-       } else if (authError.code === "auth/invalid-credential") {
+       console.error('Login error:', err);
+       const supabaseError = err as { message?: string; status?: number };
+       const message = supabaseError.message?.toLowerCase() || '';
+
+       // Handle Supabase auth errors
+       if (message.includes('invalid login credentials') || message.includes('email not confirmed')) {
          setError("ইমেইল বা পাসওয়ার্ড ভুল হয়েছে।");
+       } else if (message.includes('email not confirmed') || message.includes('email address not authorized')) {
+         setError("আপনার ইমেইল কনফার্ম করা হয়নি। ইমেইল চেক করে কনফার্মেশন লিংকে ক্লিক করুন।");
+       } else if (message.includes('too many requests') || message.includes('rate limit')) {
+         setError("অনেকবার চেষ্টা করেছেন। কিছুক্ষণ পর আবার চেষ্টা করুন।");
+       } else if (message.includes('invalid email')) {
+         setError("ইমেইল ফরম্যাট সঠিক নয়।");
        } else {
          setError("লগইন করতে সমস্যা হয়েছে। আবার চেষ্টা করুন।");
        }
-       console.error(err);
      } finally {
       setIsLoading(false);
     }

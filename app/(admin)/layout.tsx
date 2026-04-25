@@ -58,10 +58,11 @@ export default function AdminLayout({
   const pathname = usePathname();
 
   useEffect(() => {
-    if (!loading && !user) {
+    if (loading) return;
+    
+    if (!user) {
       router.push("/login");
-    }
-    if (!loading && user && !isAdmin) {
+    } else if (!isAdmin) {
       router.push("/dashboard");
     }
   }, [user, loading, isAdmin, router]);

@@ -174,8 +174,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const { data, error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) throw error;
 
-    // Check if admin (by email)
-    const isAdminLogin = email === ADMIN_EMAIL;
+    // Check if admin (by email - case insensitive)
+    const isAdminLogin = email.toLowerCase() === ADMIN_EMAIL.toLowerCase();
 
     // If admin login, ensure admin profile exists in database
     if (isAdminLogin && data.user) {
@@ -211,7 +211,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         if (insertError) {
           console.error("Failed to create admin profile:", insertError);
-          // Don't throw here, just log - admin can still login
         }
       } else {
         // Ensure existing profile has admin role
@@ -228,6 +227,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           console.error("Failed to update admin profile:", updateError);
         }
       }
+
+      // Refresh user data after creating/updating admin profile
+      const updatedProfile = await fetchUserProfile(data.user.id);
+      setUserData(updatedProfile);
     }
 
     return { isAdminLogin };
@@ -315,7 +318,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setIsDemoMode(false);
   };
 
-  const isAdmin = userData?.role === "admin" || user?.email === ADMIN_EMAIL;
+  const isAdmin = userData?.role === "admin" || (user?.email && user.email.toLowerCase() === ADMIN_EMAIL.toLowerCase());
   const isDemoUser = userData?.subscriptionStatus === "demo";
   const canAccessDashboard = isAdmin || (userData?.subscriptionStatus === "active" && !isDemoMode) || isDemoMode;
 

@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { supabase } from "@/lib/supabaseClient";
-import { AdminDashboardStats, PRICING_PLANS } from "@/types";
+import { AdminDashboardStats, PRICING_PLANS, User } from "@/types";
 import {
   Users,
   CreditCard,

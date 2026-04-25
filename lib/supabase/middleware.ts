@@ -9,7 +9,7 @@ if (!supabaseUrl || !supabaseKey) {
 }
 
 export async function createMiddlewareClient(request: NextRequest, response: NextResponse) {
-  return createServerClient(supabaseUrl, supabaseKey, {
+  return createServerClient(supabaseUrl!, supabaseKey!, {
     cookies: {
       getAll() {
         return request.cookies.getAll();

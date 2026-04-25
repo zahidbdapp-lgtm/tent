@@ -1,31 +1,19 @@
-import { NextResponse, type NextRequest } from "next/server";
-import { createMiddlewareClient } from "@/lib/supabase/middleware";
+import { updateSession } from "@/utils/supabase/middleware";
+import type { NextRequest } from "next/server";
 
 export async function proxy(request: NextRequest) {
-  let response = NextResponse.next({
-    request: {
-      headers: request.headers,
-    },
-  });
-
-  const supabase = await createMiddlewareClient(request, response);
-
-  // You can add additional middleware logic here
-  // For example, redirecting unauthenticated users
-  // const protectedRoutes = ['/dashboard', '/admin'];
-  // const isProtectedRoute = protectedRoutes.some(route =>
-  //   request.nextUrl.pathname.startsWith(route)
-  // );
-
-  // if (isProtectedRoute && !session) {
-  //   return NextResponse.redirect(new URL('/login', request.url));
-  // }
-
-  return response;
+  return await updateSession(request);
 }
 
 export const config = {
   matcher: [
-    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+    /*
+     * Match all request paths except for the ones starting with:
+     * - _next/static (static files)
+     * - _next/image (image optimization files)
+     * - favicon.ico (favicon file)
+     * - public folder
+     */
+    "/((?!_next/static|_next/image|favicon.ico|public).*)",
   ],
 };
