@@ -1,32 +1,18 @@
 import { createBrowserClient, createServerClient } from "@supabase/ssr";
 
-// Helper function to get and validate Supabase URL
-function getSupabaseUrl(): string {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  if (!url) {
-    throw new Error(
-      "Missing NEXT_PUBLIC_SUPABASE_URL environment variable. " +
-      "Please set it in your .env.local or Netlify environment variables."
-    );
-  }
-  return url;
-}
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
 
-// Helper function to get and validate Supabase key
-function getSupabaseKey(): string {
-  const key = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
-  if (!key) {
-    throw new Error(
-      "Missing NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY environment variable. " +
-      "Please set it in your .env.local or Netlify environment variables."
-    );
-  }
-  return key;
+if (!supabaseUrl || !supabaseKey) {
+  throw new Error(
+    "Missing Supabase environment variables. " +
+    "Please ensure NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY are set in your .env.local"
+  );
 }
 
 // Client-side Supabase client for browser usage
 export const createClient = () =>
-  createBrowserClient(getSupabaseUrl(), getSupabaseKey());
+  createBrowserClient(supabaseUrl, supabaseKey);
 
 // Server-side Supabase client for Server Components and Route Handlers
 export const createServerSupabaseClient = (context?: { cookies: any }) => {
@@ -34,7 +20,7 @@ export const createServerSupabaseClient = (context?: { cookies: any }) => {
     throw new Error("Server context is required for server-side Supabase client");
   }
 
-  return createServerClient(getSupabaseUrl(), getSupabaseKey(), {
+  return createServerClient(supabaseUrl, supabaseKey, {
     cookies: context.cookies,
   });
 };

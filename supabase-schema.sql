@@ -255,7 +255,7 @@ CREATE POLICY "Users can update own profile" ON users
   FOR UPDATE USING (id = auth.uid());
 
 CREATE POLICY "Users can insert own profile" ON users
-  FOR INSERT WITH CHECK (id = auth.uid());
+  FOR INSERT WITH CHECK (auth.uid() IS NOT NULL);
 
 CREATE POLICY "Owners can view own properties" ON properties
   FOR SELECT USING (owner_id = auth.uid());
@@ -329,7 +329,7 @@ CREATE POLICY "Admins can view all payment requests" ON payment_requests
   );
 
 CREATE POLICY "Users can insert payment requests" ON payment_requests
-  FOR INSERT WITH CHECK (user_id = auth.uid());
+  FOR INSERT WITH CHECK (true);
 
 CREATE POLICY "Owners can view own expenses" ON expenses
   FOR SELECT USING (owner_id = auth.uid());

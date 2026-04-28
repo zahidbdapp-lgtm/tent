@@ -1,6 +1,8 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import {
@@ -75,6 +77,27 @@ const paymentMethods = [
 ];
 
 export default function LandingPage() {
+  const router = useRouter();
+
+  // Handle OAuth callback redirect from root to /api/oauth-callback
+  useEffect(() => {
+    // Use window.location to check for code parameter
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      const code = params.get("code");
+      const error = params.get("error");
+
+      if (code || error) {
+        console.log("[page] OAuth callback detected, redirecting to /api/oauth-callback", { code: !!code, error });
+        
+        // Build callback URL with all parameters
+        const callbackUrl = `/api/oauth-callback${window.location.search}`;
+        console.log("[page] Redirecting to:", callbackUrl);
+        router.push(callbackUrl);
+      }
+    }
+  }, [router]);
+
   return (
     <div className="min-h-screen bg-background">
       {/* Supabase Setup Banner */}

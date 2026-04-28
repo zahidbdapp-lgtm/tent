@@ -28,18 +28,6 @@ export default function LoginPage() {
     }
   }, [userStatusMessage]);
 
-  useEffect(() => {
-    if (userStatusMessage && !statusMessage) {
-      setStatusMessage(userStatusMessage);
-    }
-  }, [userStatusMessage]);
-
-  useEffect(() => {
-    if (userStatusMessage && !statusMessage) {
-      setStatusMessage(userStatusMessage);
-    }
-  }, [userStatusMessage]);
-
    if (!isConfigured) {
      return (
        <div className="min-h-screen flex items-center justify-center bg-background p-4">
@@ -121,6 +109,7 @@ export default function LoginPage() {
   };
 
   const handleDemoMode = () => {
+    enterDemoMode();
     router.push("/demo");
   };
 
