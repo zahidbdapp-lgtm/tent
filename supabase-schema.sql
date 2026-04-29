@@ -245,14 +245,28 @@ ALTER TABLE payment_requests ENABLE ROW LEVEL SECURITY;
 ALTER TABLE expenses ENABLE ROW LEVEL SECURITY;
 
 -- RLS Policies
--- Note: "Admins can view all users" policy removed to prevent infinite recursion
--- Use auth.jwt() claims or a separate admin_roles table for role-based access in production
+-- Regular users can view/update their own profile
+-- Admin can view and update all users
 
 CREATE POLICY "Users can view own profile" ON users
-  FOR SELECT USING (id = auth.uid());
+  FOR SELECT USING (
+    id = auth.uid()
+  );
+
+CREATE POLICY "Admins can view all users" ON users
+  FOR SELECT USING (
+    role = 'admin'
+  );
 
 CREATE POLICY "Users can update own profile" ON users
-  FOR UPDATE USING (id = auth.uid());
+  FOR UPDATE USING (
+    id = auth.uid()
+  );
+
+CREATE POLICY "Admins can update any user" ON users
+  FOR UPDATE USING (
+    role = 'admin'
+  );
 
 CREATE POLICY "Users can insert own profile" ON users
   FOR INSERT WITH CHECK (auth.uid() IS NOT NULL);

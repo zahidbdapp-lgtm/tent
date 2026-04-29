@@ -1,11 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { supabase } from "@/lib/supabaseClient";
 import { useAuth } from "@/contexts/auth-context";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import {
   Card,
@@ -15,203 +12,80 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { FieldGroup, Field, FieldLabel } from "@/components/ui/field";
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "@/components/ui/tabs";
 import { Spinner } from "@/components/ui/spinner";
 import { Empty } from "@/components/ui/empty";
 import { toast } from "sonner";
-import { Plus, Pencil, Trash2, Megaphone, AlertTriangle, Info, AlertCircle } from "lucide-react";
-import type { Notice, Property, NoticePriority } from "@/types";
+import { Megaphone, AlertTriangle, Info, AlertCircle, CheckCircle2, Mail } from "lucide-react";
+import type { Notice, NoticePriority } from "@/types";
 
-interface NoticeFormData {
-  propertyId: string;
-  title: string;
-  content: string;
-  priority: NoticePriority;
-  expiresAt: string;
+interface AdminNoticeRecipient {
+  id: string;
+  is_read: boolean;
+  read_at: string | null;
+  notice_id: string;
+  notices: Notice;
 }
 
-const initialFormData: NoticeFormData = {
-  propertyId: "",
-  title: "",
-  content: "",
-  priority: "medium",
-  expiresAt: "",
+const priorityOptions: Record<NoticePriority, { label: string; icon: React.ElementType; variant: "default" | "secondary" | "destructive" }> = {
+  low: { label: "কম", icon: Info, variant: "secondary" },
+  medium: { label: "মাঝারি", icon: AlertTriangle, variant: "default" },
+  high: { label: "জরুরি", icon: AlertCircle, variant: "destructive" },
 };
-
-const priorityOptions: { value: NoticePriority; label: string; icon: React.ElementType }[] = [
-  { value: "low", label: "Low", icon: Info },
-  { value: "medium", label: "Medium", icon: AlertTriangle },
-  { value: "high", label: "High", icon: AlertCircle },
-];
 
 export default function NoticesPage() {
   const { userData } = useAuth();
-  const [notices, setNotices] = useState<Notice[]>([]);
-  const [properties, setProperties] = useState<Property[]>([]);
+  const [adminNotices, setAdminNotices] = useState<AdminNoticeRecipient[]>([]);
   const [loading, setLoading] = useState(true);
-  const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
-  const [selectedNotice, setSelectedNotice] = useState<Notice | null>(null);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [formData, setFormData] = useState<NoticeFormData>(initialFormData);
+  const [unreadCount, setUnreadCount] = useState(0);
 
-  const fetchData = async () => {
-    if (!user) return;
+  useEffect(() => {
+    if (!userData) return;
+    fetchNotices();
+  }, [userData]);
 
+  const fetchNotices = async () => {
     try {
-      // Fetch properties
-      const { data: propertiesData, error: propertiesError } = await supabase
-        .from("properties")
-        .select("*")
-        .eq("ownerId", userData.id);
-
-      if (propertiesError) throw propertiesError;
-      setProperties(propertiesData || []);
-
-      // Fetch notices
-      const { data: noticesData, error: noticesError } = await supabase
-        .from("notices")
-        .select("*")
-        .eq("ownerId", userData.id);
-
-      if (noticesError) throw noticesError;
-      setNotices((noticesData || []).sort((a, b) =>
-        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-      ));
+      const response = await fetch("/api/user-notices");
+      if (!response.ok) throw new Error("Failed to fetch notices");
+      const data = await response.json();
+      setAdminNotices(data.notices || []);
+      setUnreadCount((data.notices || []).filter((n: AdminNoticeRecipient) => !n.is_read).length);
     } catch (error) {
-      console.error("Failed to fetch data:", error);
-      toast.error("Failed to load data");
+      console.error("Failed to fetch notices:", error);
+      toast.error("নোটিস লোড করতে ব্যর্থ");
     } finally {
       setLoading(false);
     }
   };
 
-  useEffect(() => {
-    fetchData();
-  }, [user]);
-
-  const handleOpenDialog = (notice?: Notice) => {
-    if (notice) {
-      setSelectedNotice(notice);
-      setFormData({
-        propertyId: notice.propertyId,
-        title: notice.title,
-        content: notice.content,
-        priority: notice.priority,
-        expiresAt: notice.expiresAt.split("T")[0],
+  const markAsRead = async (recipientId: string, isRead: boolean) => {
+    try {
+      const response = await fetch(`/api/user-notices/${recipientId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ isRead: !isRead }),
       });
-    } else {
-      setSelectedNotice(null);
-      setFormData(initialFormData);
-    }
-    setIsDialogOpen(true);
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!user) return;
-
-    if (!formData.propertyId) {
-      toast.error("Please select a property");
-      return;
-    }
-
-    setIsSubmitting(true);
-
-    try {
-      const now = new Date().toISOString();
-      const noticeData = {
-        propertyId: formData.propertyId,
-        ownerId: userData.id,
-        title: formData.title,
-        content: formData.content,
-        priority: formData.priority,
-        expiresAt: formData.expiresAt,
-      };
-
-      if (selectedNotice) {
-        const { error } = await supabase
-          .from("notices")
-          .update(noticeData)
-          .eq("id", selectedNotice.id);
-        if (error) throw error;
-        toast.success("Notice updated successfully");
-      } else {
-        const { error } = await supabase
-          .from("notices")
-          .insert({ ...noticeData, createdAt: now });
-        if (error) throw error;
-        toast.success("Notice created successfully");
-      }
-
-      setIsDialogOpen(false);
-      fetchData();
+      if (!response.ok) throw new Error("Failed to update notice status");
+      await fetchNotices();
+      toast.success(!isRead ? "নোটিস পড়া হয়েছে" : "নোটিস অপড়া করা হয়েছে");
     } catch (error) {
-      console.error("Failed to save notice:", error);
-      toast.error("Failed to save notice");
-    } finally {
-      setIsSubmitting(false);
+      console.error("Failed to update notice status:", error);
+      toast.error("স্ট্যাটাস আপডেট ব্যর্থ");
     }
-  };
-
-  const handleDelete = async () => {
-    if (!selectedNotice) return;
-
-    try {
-      const { error } = await supabase
-        .from("notices")
-        .delete()
-        .eq("id", selectedNotice.id);
-      if (error) throw error;
-      toast.success("Notice deleted successfully");
-      setIsDeleteDialogOpen(false);
-      setSelectedNotice(null);
-      fetchData();
-    } catch (error) {
-      console.error("Failed to delete notice:", error);
-      toast.error("Failed to delete notice");
-    }
-  };
-
-  const getPropertyName = (propertyId: string) => {
-    return properties.find((p) => p.id === propertyId)?.name || "Unknown";
   };
 
   const getPriorityBadge = (priority: NoticePriority) => {
-    const config: Record<NoticePriority, { variant: "default" | "secondary" | "destructive"; icon: React.ElementType }> = {
-      low: { variant: "secondary", icon: Info },
-      medium: { variant: "default", icon: AlertTriangle },
-      high: { variant: "destructive", icon: AlertCircle },
-    };
-    const { variant, icon: Icon } = config[priority];
+    const config = priorityOptions[priority];
+    const Icon = config.icon;
     return (
-      <Badge variant={variant} className="gap-1">
+      <Badge variant={config.variant} className="gap-1">
         <Icon className="h-3 w-3" />
-        {priority}
+        {config.label}
       </Badge>
     );
   };
@@ -228,238 +102,154 @@ export default function NoticesPage() {
     );
   }
 
+  const unreadNotices = adminNotices.filter((n) => !n.is_read);
+  const readNotices = adminNotices.filter((n) => n.is_read);
+
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-2xl font-bold">Notice Board</h2>
-          <p className="text-muted-foreground">Post announcements for your properties</p>
-        </div>
-        <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-          <DialogTrigger asChild>
-            <Button onClick={() => handleOpenDialog()} disabled={properties.length === 0}>
-              <Plus className="mr-2 h-4 w-4" />
-              Post Notice
-            </Button>
-          </DialogTrigger>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>
-                {selectedNotice ? "Edit Notice" : "Post New Notice"}
-              </DialogTitle>
-              <DialogDescription>
-                {selectedNotice
-                  ? "Update the notice details below."
-                  : "Create a new announcement for your property."}
-              </DialogDescription>
-            </DialogHeader>
-            <form onSubmit={handleSubmit}>
-              <FieldGroup>
-                <Field>
-                  <FieldLabel htmlFor="property">Property</FieldLabel>
-                  <Select
-                    value={formData.propertyId}
-                    onValueChange={(value) =>
-                      setFormData({ ...formData, propertyId: value })
-                    }
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select property" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {properties.map((property) => (
-                        <SelectItem key={property.id} value={property.id}>
-                          {property.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </Field>
-
-                <Field>
-                  <FieldLabel htmlFor="title">Title</FieldLabel>
-                  <Input
-                    id="title"
-                    value={formData.title}
-                    onChange={(e) =>
-                      setFormData({ ...formData, title: e.target.value })
-                    }
-                    placeholder="Notice title"
-                    required
-                  />
-                </Field>
-
-                <Field>
-                  <FieldLabel htmlFor="content">Content</FieldLabel>
-                  <Textarea
-                    id="content"
-                    value={formData.content}
-                    onChange={(e) =>
-                      setFormData({ ...formData, content: e.target.value })
-                    }
-                    placeholder="Write your announcement here..."
-                    rows={4}
-                    required
-                  />
-                </Field>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <Field>
-                    <FieldLabel htmlFor="priority">Priority</FieldLabel>
-                    <Select
-                      value={formData.priority}
-                      onValueChange={(value: NoticePriority) =>
-                        setFormData({ ...formData, priority: value })
-                      }
-                    >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {priorityOptions.map((option) => (
-                          <SelectItem key={option.value} value={option.value}>
-                            {option.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </Field>
-
-                  <Field>
-                    <FieldLabel htmlFor="expiresAt">Expires On</FieldLabel>
-                    <Input
-                      id="expiresAt"
-                      type="date"
-                      value={formData.expiresAt}
-                      onChange={(e) =>
-                        setFormData({ ...formData, expiresAt: e.target.value })
-                      }
-                      required
-                    />
-                  </Field>
-                </div>
-
-                <div className="flex justify-end gap-2 pt-4">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => setIsDialogOpen(false)}
-                  >
-                    Cancel
-                  </Button>
-                  <Button type="submit" disabled={isSubmitting}>
-                    {isSubmitting && <Spinner className="mr-2" />}
-                    {selectedNotice ? "Update" : "Post Notice"}
-                  </Button>
-                </div>
-              </FieldGroup>
-            </form>
-          </DialogContent>
-        </Dialog>
+      <div>
+        <h2 className="text-2xl font-bold">আমার নোটিস</h2>
+        <p className="text-muted-foreground">প্রশাসক থেকে গুরুত্বপূর্ণ বিজ্ঞপ্তি</p>
       </div>
 
-      {properties.length === 0 ? (
+      {adminNotices.length === 0 ? (
         <Card>
           <CardContent className="py-12">
             <Empty
               icon={Megaphone}
-              title="Add a property first"
-              description="You need to add a property before you can post notices."
+              title="কোনো নোটিস নেই"
+              description="এখন পর্যন্ত কোনো নোটিস পাওয়া যায়নি"
             />
-          </CardContent>
-        </Card>
-      ) : notices.length === 0 ? (
-        <Card>
-          <CardContent className="py-12">
-            <Empty
-              icon={Megaphone}
-              title="No notices yet"
-              description="Get started by posting your first announcement."
-            />
-            <div className="mt-4 flex justify-center">
-              <Button onClick={() => handleOpenDialog()}>
-                <Plus className="mr-2 h-4 w-4" />
-                Post Notice
-              </Button>
-            </div>
           </CardContent>
         </Card>
       ) : (
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {notices.map((notice) => (
-            <Card
-              key={notice.id}
-              className={isExpired(notice.expiresAt) ? "opacity-60" : ""}
-            >
-              <CardHeader className="pb-3">
-                <div className="flex items-start justify-between">
-                  <div className="flex-1">
-                    <CardTitle className="text-base">{notice.title}</CardTitle>
-                    <CardDescription className="mt-1">
-                      {getPropertyName(notice.propertyId)}
-                    </CardDescription>
-                  </div>
-                  {getPriorityBadge(notice.priority)}
-                </div>
-              </CardHeader>
-              <CardContent>
-                <p className="text-sm text-muted-foreground whitespace-pre-wrap mb-4">
-                  {notice.content}
-                </p>
-                 <div className="flex items-center justify-between text-xs text-muted-foreground">
-                   <span>
-                     {isExpired(notice.expiresAt)
-                       ? "Expired"
-                       : `Expires ${new Date(notice.expiresAt).toLocaleDateString()}`}
-                   </span>
-                  <div className="flex gap-1">
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-7 w-7"
-                      onClick={() => handleOpenDialog(notice)}
-                    >
-                      <Pencil className="h-3 w-3" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-7 w-7"
-                      onClick={() => {
-                        setSelectedNotice(notice);
-                        setIsDeleteDialogOpen(true);
-                      }}
-                    >
-                      <Trash2 className="h-3 w-3 text-destructive" />
-                    </Button>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      )}
+        <Tabs defaultValue="unread" className="w-full">
+          <TabsList className="grid w-full grid-cols-2">
+            <TabsTrigger value="unread" className="relative">
+              অপড়া ({unreadNotices.length})
+              {unreadCount > 0 && (
+                <span className="absolute top-0 right-0 h-5 w-5 bg-red-500 text-white text-xs rounded-full flex items-center justify-center">
+                  {unreadCount}
+                </span>
+              )}
+            </TabsTrigger>
+            <TabsTrigger value="read">
+              পড়া ({readNotices.length})
+            </TabsTrigger>
+          </TabsList>
 
-      <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete Notice</AlertDialogTitle>
-            <AlertDialogDescription>
-              Are you sure you want to delete "{selectedNotice?.title}"? This action
-              cannot be undone.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleDelete}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            >
-              Delete
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+          <TabsContent value="unread" className="space-y-4">
+            {unreadNotices.length === 0 ? (
+              <Card>
+                <CardContent className="py-8">
+                  <div className="text-center text-muted-foreground">
+                    <Mail className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                    <p>কোনো অপড়া নোটিস নেই</p>
+                  </div>
+                </CardContent>
+              </Card>
+            ) : (
+              unreadNotices.map((recipient) => (
+                <Card key={recipient.id} className="border-l-4 border-l-blue-500">
+                  <CardHeader>
+                    <div className="flex items-start justify-between">
+                      <div className="flex-1">
+                        <CardTitle className="text-lg">{recipient.notices.title}</CardTitle>
+                        <CardDescription className="mt-1">
+                          {new Date(recipient.notices.createdAt).toLocaleDateString("bn-BD", {
+                            year: "numeric",
+                            month: "long",
+                            day: "numeric",
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          })}
+                        </CardDescription>
+                      </div>
+                      <div className="flex gap-2 flex-col items-end">
+                        {getPriorityBadge(recipient.notices.priority)}
+                        {isExpired(recipient.notices.expiresAt) && (
+                          <Badge variant="outline" className="text-red-600">
+                            মেয়াদ শেষ
+                          </Badge>
+                        )}
+                      </div>
+                    </div>
+                  </CardHeader>
+                  <CardContent>
+                    <p className="text-sm mb-4 whitespace-pre-wrap">{recipient.notices.content}</p>
+                    <div className="flex gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => markAsRead(recipient.id, recipient.is_read)}
+                      >
+                        <CheckCircle2 className="h-4 w-4 mr-2" />
+                        পড়া হয়েছে চিহ্নিত করুন
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))
+            )}
+          </TabsContent>
+
+          <TabsContent value="read" className="space-y-4">
+            {readNotices.length === 0 ? (
+              <Card>
+                <CardContent className="py-8">
+                  <div className="text-center text-muted-foreground">
+                    <CheckCircle2 className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                    <p>কোনো পড়া নোটিস নেই</p>
+                  </div>
+                </CardContent>
+              </Card>
+            ) : (
+              readNotices.map((recipient) => (
+                <Card key={recipient.id} className="opacity-75">
+                  <CardHeader>
+                    <div className="flex items-start justify-between">
+                      <div className="flex-1">
+                        <CardTitle className="text-lg">{recipient.notices.title}</CardTitle>
+                        <CardDescription className="mt-1">
+                          পড়া হয়েছে:{" "}
+                          {new Date(recipient.read_at || "").toLocaleDateString("bn-BD", {
+                            year: "numeric",
+                            month: "long",
+                            day: "numeric",
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          })}
+                        </CardDescription>
+                      </div>
+                      <div className="flex gap-2 flex-col items-end">
+                        {getPriorityBadge(recipient.notices.priority)}
+                        {isExpired(recipient.notices.expiresAt) && (
+                          <Badge variant="outline" className="text-red-600">
+                            মেয়াদ শেষ
+                          </Badge>
+                        )}
+                      </div>
+                    </div>
+                  </CardHeader>
+                  <CardContent>
+                    <p className="text-sm mb-4 whitespace-pre-wrap">{recipient.notices.content}</p>
+                    <div className="flex gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => markAsRead(recipient.id, recipient.is_read)}
+                      >
+                        <Mail className="h-4 w-4 mr-2" />
+                        অপড়া হিসাবে চিহ্নিত করুন
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))
+            )}
+          </TabsContent>
+        </Tabs>
+      )}
     </div>
   );
 }

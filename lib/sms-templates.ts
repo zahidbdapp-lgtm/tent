@@ -18,6 +18,9 @@ export type SMSTemplateType =
   | "payment_received" 
   | "payment_partial" 
   | "overdue_notice"
+  | "invoice_reminder_en"
+  | "payment_received_en"
+  | "due_invoice_en"
   | "custom";
 
 // Format month to Bengali
@@ -92,6 +95,25 @@ ${unitNumber ? `ইউনিট: ${unitNumber}` : ""}
 
 ${ownerName ? `- ${ownerName}` : ""}`;
 
+    case "invoice_reminder_en":
+      return `Hi ${tenantName},
+
+Reminder: Your rent of ৳${dueAmountBn} is due${dueDate ? ` on ${dueDate}` : ""}. Please pay on time.
+
+Thank you!`;
+
+    case "payment_received_en":
+      return `Hi ${tenantName},
+
+Your payment of ৳${amountBn} has been received. Thank you!`;
+
+    case "due_invoice_en":
+      return `Hi ${tenantName},
+
+Invoice created: Payment of ৳${amount} is due${dueDate ? ` on ${dueDate}` : ""}. Please arrange payment.
+
+Thank you!`;
+
     case "custom":
     default:
       return `প্রিয় ${tenantName},
@@ -147,6 +169,16 @@ export const SMS_TEMPLATES: { value: SMSTemplateType; label: string; description
     value: "overdue_notice", 
     label: "ওভারডিউ নোটিশ", 
     description: "মেয়াদ উত্তীর্ণ ভাড়ার কড়া নোটিশ" 
+  },
+  { 
+    value: "payment_received_en", 
+    label: "Payment Confirmation (EN)", 
+    description: "Payment confirmation in English" 
+  },
+  { 
+    value: "due_invoice_en", 
+    label: "Invoice Due Notice (EN)", 
+    description: "Invoice created notification in English" 
   },
   { 
     value: "custom", 

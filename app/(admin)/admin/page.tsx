@@ -24,57 +24,70 @@ export default function AdminOverviewPage() {
   const [refreshing, setRefreshing] = useState(false);
 
   const fetchStats = async () => {
-      try {
-        // Fetch users
-        const { data: users, error } = await supabase
-          .from("users")
-          .select("*");
+    try {
+      // API থেকে সিকিউরভাবে ডেটা কল করা হচ্ছে
+      const res = await fetch("/api/admin-stats");
+      const data = await res.json();
 
-        if (error) throw error;
-
-        const totalUsers = users?.length || 0;
-        const paidUsers = users?.filter(
-          (u: User) => u.subscriptionStatus === "active"
-        ).length || 0;
-        const demoUsers = users?.filter(
-          (u: User) => u.subscriptionStatus === "demo"
-        ).length || 0;
-        const pendingPaymentUsersCount = users?.filter(
-          (u: User) => u.subscriptionStatus === "payment_pending"
-        ).length || 0;
-
-        setPendingPaymentUsers(pendingPaymentUsersCount);
-
-        // Calculate total revenue
-        const totalRevenue = users
-          ?.filter((u: User) => u.subscriptionStartDate && (u.subscriptionStatus === "active" || u.subscriptionStatus === "payment_due"))
-          .reduce((sum: number, u: User) => sum + (u.paymentAmount || 0), 0) || 0;
-
-        // Calculate monthly revenue (users activated this month)
-        const now = new Date();
-        const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-        const monthlyRevenue = users
-          ?.filter((u: User) => {
-            const startDate = u.subscriptionStartDate ? new Date(u.subscriptionStartDate) : null;
-            return startDate && startDate >= startOfMonth && (u.subscriptionStatus === "active" || u.subscriptionStatus === "payment_due");
-          })
-          .reduce((sum: number, u: User) => sum + (u.paymentAmount || 0), 0) || 0;
-
-        setStats({
-          totalUsers,
-          paidUsers,
-          demoUsers,
-          pendingPayments: pendingPaymentUsersCount,
-          totalRevenue,
-          monthlyRevenue,
-        });
-      } catch (error) {
-        console.error("Error fetching admin stats:", error);
-      } finally {
-        setLoading(false);
-        setRefreshing(false);
+      if (!res.ok) {
+        throw new Error(data.error || "API থেকে ডেটা আনতে ব্যর্থ হয়েছে");
       }
-    };
+
+      // ডাটাবেসের snake_case ফরম্যাটকে ফ্রন্টএন্ডের জন্য camelCase এ ম্যাপ করা হচ্ছে
+      const users = data.users.map((u: any) => ({
+        ...u,
+        subscriptionStatus: u.subscription_status,
+        subscriptionStartDate: u.subscription_start_date,
+        subscriptionExpiry: u.subscription_expiry,
+        paymentAmount: u.payment_amount,
+        paymentDate: u.payment_date,
+        paymentTransactionId: u.payment_transaction_id,
+        paymentNumber: u.payment_number,
+      }));
+
+      const totalUsers = users?.length || 0;
+      const paidUsers = users?.filter(
+        (u: any) => u.subscriptionStatus === "active"
+      ).length || 0;
+      const paymentDueUsers = users?.filter(
+        (u: any) => u.subscriptionStatus === "payment_due"
+      ).length || 0;
+      const pendingPaymentUsersCount = users?.filter(
+        (u: any) => u.subscriptionStatus === "payment_pending"
+      ).length || 0;
+
+      setPendingPaymentUsers(pendingPaymentUsersCount);
+
+      // সর্বমোট রাজস্ব হিসাব
+      const totalRevenue = users
+        ?.filter((u: any) => u.subscriptionStartDate && (u.subscriptionStatus === "active" || u.subscriptionStatus === "payment_due"))
+        .reduce((sum: number, u: any) => sum + (u.paymentAmount || 0), 0) || 0;
+
+      // চলতি মাসের রাজস্ব হিসাব
+      const now = new Date();
+      const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+      const monthlyRevenue = users
+        ?.filter((u: any) => {
+          const startDate = u.subscriptionStartDate ? new Date(u.subscriptionStartDate) : null;
+          return startDate && startDate >= startOfMonth && (u.subscriptionStatus === "active" || u.subscriptionStatus === "payment_due");
+        })
+        .reduce((sum: number, u: any) => sum + (u.paymentAmount || 0), 0) || 0;
+
+      setStats({
+        totalUsers,
+        paidUsers,
+        paymentDueUsers,
+        pendingPayments: pendingPaymentUsersCount,
+        totalRevenue,
+        monthlyRevenue,
+      });
+    } catch (error) {
+      console.error("Error fetching admin stats:", error);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  };
 
   useEffect(() => {
     fetchStats();
@@ -223,8 +236,8 @@ export default function AdminOverviewPage() {
                 <span className="font-medium text-success">{stats?.paidUsers || 0}</span>
               </div>
               <div className="flex justify-between items-center">
-                <span className="text-sm text-muted-foreground">Demo Users</span>
-                <span className="font-medium">{stats?.demoUsers || 0}</span>
+                <span className="text-sm text-muted-foreground">Payment Due Users</span>
+                <span className="font-medium">{stats?.paymentDueUsers || 0}</span>
               </div>
               <div className="flex justify-between items-center pt-2 border-t">
                 <span className="text-sm font-medium">Total</span>

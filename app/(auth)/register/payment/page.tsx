@@ -126,9 +126,9 @@ export default function PaymentPage() {
         );
 
         setSuccess("সফলভাবে একাউন্ট তৈরি হয়েছে! Admin approval এর অপেক্ষায়...");
-        localStorage.removeItem("pendingSignup");
         
         setTimeout(() => {
+          localStorage.removeItem("pendingSignup");
           router.push("/registration-pending");
         }, 3000);
       } else if (signupType === "google") {
@@ -142,10 +142,10 @@ export default function PaymentPage() {
         });
 
         setSuccess("সফলভাবে একাউন্ট তৈরি হয়েছে! Admin approval এর অপেক্ষায়...");
-        localStorage.removeItem("pendingGoogleSignup");
-        localStorage.removeItem("isGoogleSignupFlow");
         
         setTimeout(() => {
+          localStorage.removeItem("pendingGoogleSignup");
+          localStorage.removeItem("isGoogleSignupFlow");
           router.push("/registration-pending");
         }, 3000);
       }

@@ -40,12 +40,14 @@ import {
   LogOut,
   ChevronUp,
   ArrowLeft,
+  Megaphone,
 } from "lucide-react";
 
 const adminNavigation = [
   { name: "Overview", href: "/admin", icon: LayoutDashboard },
   { name: "Users", href: "/admin/users", icon: Users },
   { name: "Payments", href: "/admin/payments", icon: CreditCard },
+  { name: "Notice Board", href: "/admin/notices", icon: Megaphone },
 ];
 
 export default function AdminLayout({

@@ -1,5 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import { NextRequest, NextResponse } from "next/server";
+import { typescriptUserToDatabaseUser } from "@/lib/supabase/userConverter";
 
 // Initialize Supabase with service role key (server-side only)
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
@@ -57,29 +58,31 @@ export async function POST(request: NextRequest) {
 
     console.log("[API] Creating profile for user:", body.userId);
 
-    const profileData = {
+    const profileObj = {
       id: body.userId,
       email: body.email,
-      display_name: body.displayName,
+      displayName: body.displayName,
       phone: body.phone || null,
       role: "landlord",
-      subscription_status: body.plan ? "payment_pending" : "demo",
-      subscription_plan: body.plan || null,
-      subscription_start_date: null,
-      subscription_expiry: null,
-      payment_method: body.paymentMethod || null,
-      payment_number: body.paymentNumber || null,
-      payment_transaction_id: body.transactionId || null,
-      payment_amount: body.amount || null,
-      payment_date: body.amount ? new Date().toISOString() : null,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
+      subscriptionStatus: body.plan ? "payment_pending" : "demo",
+      subscriptionPlan: body.plan || null,
+      subscriptionStartDate: null,
+      subscriptionExpiry: null,
+      paymentMethod: body.paymentMethod || null,
+      paymentNumber: body.paymentNumber || null,
+      paymentTransactionId: body.transactionId || null,
+      paymentAmount: body.amount || null,
+      paymentDate: body.amount ? new Date().toISOString() : null,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
     };
+
+    const dbProfile = typescriptUserToDatabaseUser(profileObj);
 
     // Use service role to insert profile (bypasses RLS)
     const { data, error } = await supabaseAdmin
       .from("users")
-      .insert([profileData])
+      .insert([dbProfile])
       .select()
       .single();
 

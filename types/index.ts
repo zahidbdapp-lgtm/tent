@@ -52,7 +52,6 @@ export interface Tenant {
   nidFrontUrl: string;
   nidBackUrl: string;
   photoUrl: string;
-  agreementDocUrl: string;
   monthlyRent: number;
   gasCharge: number;
   waterCharge: number;
@@ -76,6 +75,7 @@ export interface Invoice {
   ownerId: string;
   tenantName: string;
   tenantEmail: string;
+  tenantPhone?: string;
   unitNumber: string;
   month: string;
   rent: number;
@@ -98,16 +98,30 @@ export interface Invoice {
 }
 
 export type NoticePriority = "low" | "medium" | "high";
+export type NoticeRecipientType = "property" | "all_users" | "specific_users";
 
 export interface Notice {
   id: string;
-  propertyId: string;
+  propertyId: string | null;
   ownerId: string;
   title: string;
   content: string;
   priority: NoticePriority;
   createdAt: string;
   expiresAt: string;
+  updatedAt?: string;
+  isAdminNotice?: boolean;
+  recipientType?: NoticeRecipientType;
+  recipientUserIds?: string[];
+}
+
+export interface NoticeRecipient {
+  id: string;
+  noticeId: string;
+  userId: string;
+  isRead: boolean;
+  readAt: string | null;
+  createdAt: string;
 }
 
 export type TicketCategory = "maintenance" | "complaint" | "inquiry" | "other";
@@ -251,7 +265,7 @@ export interface DashboardStats {
 export interface AdminDashboardStats {
   totalUsers: number;
   paidUsers: number;
-  demoUsers: number;
+  paymentDueUsers: number;
   pendingPayments: number;
   totalRevenue: number;
   monthlyRevenue: number;

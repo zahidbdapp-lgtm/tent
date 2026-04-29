@@ -3,6 +3,9 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { useAuth } from "@/contexts/auth-context";
+ import { databasePropertiesToTypescript } from "@/lib/supabase/propertyConverter";
+ import { databaseTenantsToTypescript } from "@/lib/supabase/tenantConverter";
+ import { databaseTicketsToTypescript, typescriptTicketToDatabase } from "@/lib/supabase/ticketConverter";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -106,35 +109,35 @@ export default function TicketsPage() {
   const [formData, setFormData] = useState<TicketFormData>(initialFormData);
 
   const fetchData = async () => {
-    if (!user) return;
+    if (!userData) return;
 
     try {
       // Fetch properties
       const { data: propertiesData, error: propertiesError } = await supabase
         .from("properties")
         .select("*")
-        .eq("ownerId", userData.id);
+        .eq("owner_id", userData.id);
 
       if (propertiesError) throw propertiesError;
-      setProperties(propertiesData || []);
+      setProperties(databasePropertiesToTypescript(propertiesData as any || []));
 
       // Fetch tenants
       const { data: tenantsData, error: tenantsError } = await supabase
         .from("tenants")
         .select("*")
-        .eq("ownerId", userData.id);
+        .eq("owner_id", userData.id);
 
       if (tenantsError) throw tenantsError;
-      setTenants(tenantsData || []);
+      setTenants(databaseTenantsToTypescript(tenantsData as any || []));
 
       // Fetch tickets
       const { data: ticketsData, error: ticketsError } = await supabase
         .from("tickets")
         .select("*")
-        .eq("ownerId", userData.id);
+        .eq("owner_id", userData.id);
 
       if (ticketsError) throw ticketsError;
-      setTickets((ticketsData || []).sort((a, b) =>
+      setTickets((databaseTicketsToTypescript(ticketsData as any || [])).sort((a, b) =>
         new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
       ));
     } catch (error) {
@@ -147,7 +150,7 @@ export default function TicketsPage() {
 
   useEffect(() => {
     fetchData();
-  }, [user]);
+  }, [userData]);
 
   const handleOpenDialog = (ticket?: TicketType) => {
     if (ticket) {
@@ -166,58 +169,63 @@ export default function TicketsPage() {
     setIsDialogOpen(true);
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!user) return;
+   const handleSubmit = async (e: React.FormEvent) => {
+     e.preventDefault();
+     if (!userData) return;
 
-    if (!formData.tenantId) {
-      toast.error("Please select a tenant");
-      return;
-    }
+     if (!formData.tenantId) {
+       toast.error("Please select a tenant");
+       return;
+     }
 
-    setIsSubmitting(true);
+     setIsSubmitting(true);
 
-    try {
-      const tenant = tenants.find((t) => t.id === formData.tenantId);
-      if (!tenant) throw new Error("Tenant not found");
+     try {
+       const tenant = tenants.find((t) => t.id === formData.tenantId);
+       if (!tenant) throw new Error("Tenant not found");
 
-      const now = new Date().toISOString();
-      const ticketData = {
-        tenantId: formData.tenantId,
-        tenantName: tenant.name,
-        propertyId: tenant.propertyId,
-        ownerId: userData.id,
-        subject: formData.subject,
-        description: formData.description,
-        category: formData.category,
-        status: formData.status,
-        updatedAt: now,
-      };
+       const now = new Date().toISOString();
+       
+       // Base ticket data (camelCase)
+       const ticketBase = {
+         tenantId: formData.tenantId,
+         tenantName: tenant.name,
+         propertyId: tenant.propertyId,
+         ownerId: userData.id,
+         subject: formData.subject,
+         description: formData.description,
+         category: formData.category,
+         status: formData.status,
+       };
 
-      if (selectedTicket) {
-        const { error } = await supabase
-          .from("tickets")
-          .update(ticketData)
-          .eq("id", selectedTicket.id);
-        if (error) throw error;
-        toast.success("Ticket updated successfully");
-      } else {
-        const { error } = await supabase
-          .from("tickets")
-          .insert({ ...ticketData, createdAt: now });
-        if (error) throw error;
-        toast.success("Ticket created successfully");
-      }
+       if (selectedTicket) {
+         const ticketUpdate = { ...ticketBase, updatedAt: now };
+         const dbTicketData = typescriptTicketToDatabase(ticketUpdate);
+         const { error } = await supabase
+           .from("tickets")
+           .update(dbTicketData)
+           .eq("id", selectedTicket.id);
+         if (error) throw error;
+         toast.success("Ticket updated successfully");
+       } else {
+         const ticketCreate = { ...ticketBase, createdAt: now, updatedAt: now };
+         const dbTicketData = typescriptTicketToDatabase(ticketCreate);
+         const { error } = await supabase
+           .from("tickets")
+           .insert(dbTicketData);
+         if (error) throw error;
+         toast.success("Ticket created successfully");
+       }
 
-      setIsDialogOpen(false);
-      fetchData();
-    } catch (error) {
-      console.error("Failed to save ticket:", error);
-      toast.error("Failed to save ticket");
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
+       setIsDialogOpen(false);
+       fetchData();
+     } catch (error) {
+       console.error("Failed to save ticket:", error);
+       toast.error("Failed to save ticket");
+     } finally {
+       setIsSubmitting(false);
+     }
+   };
 
   const handleDelete = async () => {
     if (!selectedTicket) return;

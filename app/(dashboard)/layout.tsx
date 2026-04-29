@@ -60,8 +60,8 @@ const navigation = [
   { name: "Tenants File Preview", href: "/dashboard/tenants-files", icon: FileText },
   { name: "Invoices", href: "/dashboard/invoices", icon: Receipt },
   { name: "Expenses", href: "/dashboard/expenses", icon: Wallet },
-  { name: "Notices", href: "/dashboard/notices", icon: Megaphone },
   { name: "Tickets", href: "/dashboard/tickets", icon: Ticket },
+  { name: "Notice Board", href: "/dashboard/notices", icon: Megaphone },
 ];
 
 const adminNavigation = [

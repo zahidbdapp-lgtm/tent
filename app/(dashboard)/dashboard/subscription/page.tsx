@@ -19,7 +19,8 @@ import {
   Calendar,
   Phone,
 } from "lucide-react";
-import { PRICING_PLANS, SubscriptionPlan, PaymentMethod } from "@/types";
+ import { PRICING_PLANS, SubscriptionPlan, PaymentMethod } from "@/types";
+ import { typescriptPaymentRequestToDatabase } from "@/lib/supabase/paymentRequestConverter";
 
 const paymentMethods: { id: PaymentMethod; name: string; number: string; color: string }[] = [
   { id: "bkash", name: "bKash", number: "01727132605", color: "bg-[#E2136E]" },
@@ -75,7 +76,8 @@ export default function SubscriptionPage() {
 
     try {
       const now = new Date().toISOString();
-      const paymentRequest = {
+      
+      const paymentRequestObj = {
         userId: user.uid,
         userEmail: user.email || "",
         userName: userData.displayName,
@@ -93,9 +95,11 @@ export default function SubscriptionPage() {
         rejectionReason: null,
       };
 
+      const dbPaymentRequest = typescriptPaymentRequestToDatabase(paymentRequestObj);
+
       const { error } = await supabase
         .from("payment_requests")
-        .insert(paymentRequest);
+        .insert(dbPaymentRequest);
       if (error) throw error;
       console.log("Payment request submitted");
 

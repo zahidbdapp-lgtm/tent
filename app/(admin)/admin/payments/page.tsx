@@ -15,11 +15,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Textarea } from "@/components/ui/textarea";
-import { supabase } from "@/lib/supabaseClient";
-import { PaymentRequest, PRICING_PLANS } from "@/types";
-import { useAuth } from "@/contexts/auth-context";
-import { Spinner } from "@/components/ui/spinner";
+ import { Textarea } from "@/components/ui/textarea";
+ import { supabase } from "@/lib/supabaseClient";
+ import { PaymentRequest, PRICING_PLANS } from "@/types";
+ import { useAuth } from "@/contexts/auth-context";
+ import { typescriptUserToDatabaseUser } from "@/lib/supabase/userConverter";
+ import { typescriptPaymentRequestToDatabase, databasePaymentRequestsToTypescript } from "@/lib/supabase/paymentRequestConverter";
+ import { Spinner } from "@/components/ui/spinner";
 import {
   Search,
   CheckCircle,
@@ -41,10 +43,19 @@ export default function AdminPaymentsPage() {
   const [rejectionReason, setRejectionReason] = useState("");
   const [isProcessing, setIsProcessing] = useState(false);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
-    fetchPayments();
+    setMounted(true);
   }, []);
+
+  useEffect(() => {
+    if (mounted) {
+      fetchPayments();
+    }
+  }, [mounted]);
 
   useEffect(() => {
     let filtered = payments;
@@ -68,99 +79,151 @@ export default function AdminPaymentsPage() {
     setFilteredPayments(filtered);
   }, [searchQuery, payments, activeTab]);
 
-  const fetchPayments = async () => {
-    try {
-      const { data, error } = await supabase
-        .from("paymentRequests")
-        .select("*")
-        .order("createdAt", { ascending: false });
+   const fetchPayments = async () => {
+     try {
+       const { data, error } = await supabase
+         .from("payment_requests")
+         .select("*")
+         .order("created_at", { ascending: false });
 
-      if (error) throw error;
+       if (error) throw error;
 
-      setPayments((data as PaymentRequest[]) || []);
-    } catch (error) {
-      console.error("Error fetching payments:", error);
-    } finally {
-      setLoading(false);
-    }
-  };
+       // Convert database format (snake_case) to TypeScript format (camelCase)
+       const paymentsData = databasePaymentRequestsToTypescript(data || []);
 
-  const handleApprove = async () => {
-    if (!selectedPayment || !currentUser) return;
-    setIsProcessing(true);
+       console.log("[fetchPayments] Fetched and converted payments:", paymentsData);
+       setPayments(paymentsData);
+     } catch (error) {
+       console.error("Error fetching payments:", error);
+     } finally {
+       setLoading(false);
+     }
+   };
 
-    try {
-      const now = new Date().toISOString();
-      const duration = PRICING_PLANS[selectedPayment.plan].duration;
-      const startDate = now;
-      const expiryDate = new Date();
-      expiryDate.setMonth(expiryDate.getMonth() + duration);
-      const expiryIso = expiryDate.toISOString();
+   const handleApprove = async () => {
+     if (!selectedPayment || !currentUser) return;
+     setIsProcessing(true);
+     setErrorMessage(null);
 
-      // Update payment request status
-      const { error: paymentError } = await supabase
-        .from("paymentRequests")
-        .update({
-          status: "approved",
-          processedAt: now,
-          processedBy: currentUser.id,
-        })
-        .eq("id", selectedPayment.id);
+     try {
+       const now = new Date().toISOString();
+       const duration = PRICING_PLANS[selectedPayment.plan].duration;
+       const startDate = now;
+       const expiryDate = new Date();
+       expiryDate.setMonth(expiryDate.getMonth() + duration);
+       const expiryIso = expiryDate.toISOString();
 
-      if (paymentError) throw paymentError;
+       console.log("[handleApprove] Approving payment:", {
+         paymentId: selectedPayment.id,
+         userId: selectedPayment.userId,
+         status: "approved",
+       });
 
-      // Update user subscription
-      const { error: userError } = await supabase
-        .from("users")
-        .update({
-          subscriptionStatus: "active",
-          subscriptionPlan: selectedPayment.plan,
-          subscriptionStartDate: startDate,
-          subscriptionExpiry: expiryIso,
-          updatedAt: now,
-        })
-        .eq("id", selectedPayment.userId);
+       // Update payment request status using converter
+       const paymentUpdates = typescriptPaymentRequestToDatabase({
+         status: "approved",
+         processedAt: now,
+         processedBy: currentUser.id,
+       });
 
-      if (userError) throw userError;
+       const { error: paymentError } = await supabase
+         .from("payment_requests")
+         .update(paymentUpdates)
+         .eq("id", selectedPayment.id);
 
-      await fetchPayments();
-      setActionDialog(null);
-      setSelectedPayment(null);
-    } catch (error) {
-      console.error("Error approving payment:", error);
-    } finally {
-      setIsProcessing(false);
-    }
-  };
+       if (paymentError) {
+         console.error("[handleApprove] Payment update error:", paymentError);
+         throw new Error(`Payment update failed: ${paymentError.message}`);
+       }
 
-  const handleReject = async () => {
-    if (!selectedPayment || !currentUser) return;
-    setIsProcessing(true);
+       // Update user subscription using converter
+       const userUpdates = typescriptUserToDatabaseUser({
+         subscriptionStatus: "active",
+         subscriptionPlan: selectedPayment.plan,
+         subscriptionStartDate: startDate,
+         subscriptionExpiry: expiryIso,
+         updatedAt: now,
+         rejectionReason: null,
+       });
 
-    try {
-      const now = new Date().toISOString();
-      const { error } = await supabase
-        .from("paymentRequests")
-        .update({
-          status: "rejected",
-          processedAt: now,
-          processedBy: currentUser.id,
-          rejectionReason: rejectionReason.trim() || "পেমেন্ট যাচাই করা যায়নি",
-        })
-        .eq("id", selectedPayment.id);
+       const { error: userError } = await supabase
+         .from("users")
+         .update(userUpdates)
+         .eq("id", selectedPayment.userId);
 
-      if (error) throw error;
+       if (userError) {
+         console.error("[handleApprove] User update error:", userError);
+         throw new Error(`User update failed: ${userError.message}`);
+       }
 
-      await fetchPayments();
-      setActionDialog(null);
-      setSelectedPayment(null);
-      setRejectionReason("");
-    } catch (error) {
-      console.error("Error rejecting payment:", error);
-    } finally {
-      setIsProcessing(false);
-    }
-  };
+       console.log("[handleApprove] Success!");
+       setSuccessMessage("পেমেন্ট সফলভাবে এপ্রুভ হয়েছে!");
+       
+       setTimeout(() => {
+         setSuccessMessage(null);
+       }, 3000);
+
+       await fetchPayments();
+       setActionDialog(null);
+       setSelectedPayment(null);
+     } catch (error) {
+       const errorMsg = error instanceof Error ? error.message : "পেমেন্ট এপ্রুভ করতে সমস্যা হয়েছে";
+       console.error("[handleApprove] Error:", errorMsg);
+       setErrorMessage(errorMsg);
+     } finally {
+       setIsProcessing(false);
+     }
+   };
+
+   const handleReject = async () => {
+     if (!selectedPayment || !currentUser) return;
+     setIsProcessing(true);
+     setErrorMessage(null);
+
+     try {
+       const now = new Date().toISOString();
+       
+       console.log("[handleReject] Rejecting payment:", {
+         paymentId: selectedPayment.id,
+         reason: rejectionReason.trim() || "পেমেন্ট যাচাই করা যায়নি",
+       });
+
+       const paymentUpdates = typescriptPaymentRequestToDatabase({
+         status: "rejected",
+         processedAt: now,
+         processedBy: currentUser.id,
+         rejectionReason: rejectionReason.trim() || "পেমেন্ট যাচাই করা যায়নি",
+       });
+
+       const { error } = await supabase
+         .from("payment_requests")
+         .update(paymentUpdates)
+         .eq("id", selectedPayment.id);
+
+       if (error) {
+         console.error("[handleReject] Rejection error:", error);
+         throw new Error(`Rejection failed: ${error.message}`);
+       }
+
+       console.log("[handleReject] Success!");
+       setSuccessMessage("পেমেন্ট রিজেক্ট হয়েছে!");
+       
+       setTimeout(() => {
+         setSuccessMessage(null);
+       }, 3000);
+
+       await fetchPayments();
+       setActionDialog(null);
+       setSelectedPayment(null);
+       setRejectionReason("");
+     } catch (error) {
+       const errorMsg = error instanceof Error ? error.message : "পেমেন্ট রিজেক্ট করতে সমস্যা হয়েছে";
+       console.error("[handleReject] Error:", errorMsg);
+       setErrorMessage(errorMsg);
+     } finally {
+       setIsProcessing(false);
+     }
+   };
 
   const getStatusBadge = (status: string) => {
     switch (status) {
@@ -188,14 +251,22 @@ export default function AdminPaymentsPage() {
     }
   };
 
-  const getPaymentMethodBadge = (method: string) => {
+  const getPaymentMethodBadge = (method?: string | null) => {
+    // সমাধান: যদি method null বা undefined হয়, তবে Unknown রিটার্ন করবে
+    if (!method) {
+      return <Badge variant="secondary">Unknown</Badge>;
+    }
+
     const colors: Record<string, string> = {
-      bkash: "bg-[#E2136E] text-white",
-      nagad: "bg-[#F6921E] text-white",
-      rocket: "bg-[#8B2F89] text-white",
+      bkash: "bg-[#E2136E] text-white hover:bg-[#E2136E]/80",
+      nagad: "bg-[#F6921E] text-white hover:bg-[#F6921E]/80",
+      rocket: "bg-[#8B2F89] text-white hover:bg-[#8B2F89]/80",
     };
+
+    const normalizedMethod = method.toLowerCase();
+
     return (
-      <Badge className={colors[method] || "bg-secondary"}>
+      <Badge className={colors[normalizedMethod] || "bg-secondary"}>
         {method.charAt(0).toUpperCase() + method.slice(1)}
       </Badge>
     );
@@ -218,6 +289,14 @@ export default function AdminPaymentsPage() {
 
   return (
     <div className="space-y-6">
+      {/* Success Message */}
+      {successMessage && (
+        <div className="bg-success/10 border border-success/20 text-success p-4 rounded-lg flex items-start gap-3">
+          <CheckCircle className="h-5 w-5 mt-0.5 flex-shrink-0" />
+          <p className="font-medium">{successMessage}</p>
+        </div>
+      )}
+
       {/* Stats */}
       <div className="grid gap-4 md:grid-cols-4">
         <Card>
@@ -290,12 +369,14 @@ export default function AdminPaymentsPage() {
       </div>
 
       {/* Payment Cards */}
+      {mounted && (
       <div className="grid gap-4">
         {filteredPayments.map((payment) => (
           <Card key={payment.id}>
             <CardContent className="p-4">
-              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                <div className="flex-1 space-y-2">
+              <div className="flex flex-col md:flex-row md:items-start justify-between gap-6">
+                <div className="flex-1 space-y-4">
+                  {/* Status and Plan Badges */}
                   <div className="flex items-center gap-2 flex-wrap">
                     {getStatusBadge(payment.status)}
                     {getPaymentMethodBadge(payment.paymentMethod)}
@@ -303,51 +384,89 @@ export default function AdminPaymentsPage() {
                       {PRICING_PLANS[payment.plan]?.nameBn || payment.plan}
                     </Badge>
                   </div>
-                  <div>
-                    <p className="font-medium">{payment.userName}</p>
-                    <p className="text-sm text-muted-foreground">{payment.userEmail}</p>
+
+                  {/* User Information */}
+                  <div className="space-y-1">
+                    <p className="text-sm text-muted-foreground">ব্যবহারকারীর নাম</p>
+                    <p className="font-semibold text-base">{payment.userName}</p>
                   </div>
-                  <div className="flex items-center gap-4 text-sm">
-                    <span>
-                      <strong>TxID:</strong>{" "}
-                      <span className="font-mono">{payment.transactionId}</span>
-                    </span>
-                    <span>
-                      <strong>Amount:</strong> ৳{payment.amount}
-                    </span>
+
+                  {/* Email */}
+                  <div className="space-y-1">
+                    <p className="text-sm text-muted-foreground">ইমেইল</p>
+                    <p className="text-sm font-mono break-all">{payment.userEmail}</p>
                   </div>
-                   <p className="text-xs text-muted-foreground">
-                     {payment.createdAt
-                       ? new Date(payment.createdAt).toLocaleString("bn-BD")
-                       : "-"}
-                   </p>
-                  {payment.rejectionReason && (
-                    <p className="text-sm text-destructive">
-                      <strong>Rejection Reason:</strong> {payment.rejectionReason}
+
+                  {/* Payment Details Grid */}
+                  <div className="grid grid-cols-2 gap-4 pt-2">
+                    {/* Transaction ID */}
+                    <div className="space-y-1">
+                      <p className="text-xs text-muted-foreground">লেনদেন আইডি</p>
+                      <p className="text-sm font-mono font-bold break-all">{payment.transactionId}</p>
+                    </div>
+
+                    {/* Payment Number */}
+                    <div className="space-y-1">
+                      <p className="text-xs text-muted-foreground">পেমেন্ট নম্বর</p>
+                      <p className="text-sm font-mono font-bold break-all">{payment.paymentNumber || "-"}</p>
+                    </div>
+
+                    {/* Amount */}
+                    <div className="space-y-1">
+                      <p className="text-xs text-muted-foreground">পরিমাণ</p>
+                      <p className="text-sm font-semibold">৳{payment.amount}</p>
+                    </div>
+
+                    {/* Payment Date */}
+                    <div className="space-y-1">
+                      <p className="text-xs text-muted-foreground">পেমেন্ট তারিখ</p>
+                      <p className="text-sm">
+                        {payment.paymentDate
+                          ? new Date(payment.paymentDate).toLocaleDateString("bn-BD")
+                          : "-"}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Request Date */}
+                  <div className="pt-2 border-t">
+                    <p className="text-xs text-muted-foreground">অনুরোধের তারিখ</p>
+                    <p className="text-xs">
+                      {payment.createdAt
+                        ? new Date(payment.createdAt).toLocaleString("bn-BD")
+                        : "-"}
                     </p>
+                  </div>
+
+                  {/* Rejection Reason */}
+                  {payment.rejectionReason && (
+                    <div className="bg-destructive/10 border border-destructive/20 rounded p-2 mt-2">
+                      <p className="text-xs text-destructive font-semibold mb-1">অস্বীকার কারণ:</p>
+                      <p className="text-xs text-destructive">{payment.rejectionReason}</p>
+                    </div>
                   )}
                 </div>
 
-                <div className="flex flex-col gap-2">
+                <div className="flex flex-col gap-2 md:min-w-fit">
                   <Button
                     variant="outline"
                     size="sm"
                     onClick={() => setPreviewImage(payment.screenshotUrl)}
-                    className="gap-1"
+                    className="gap-1 w-full md:w-auto"
                   >
                     <ExternalLink className="h-4 w-4" />
                     Screenshot দেখুন
                   </Button>
 
                   {payment.status === "pending" && (
-                    <div className="flex gap-2">
+                    <div className="flex flex-col md:flex-row gap-2">
                       <Button
                         size="sm"
                         onClick={() => {
                           setSelectedPayment(payment);
                           setActionDialog("approve");
                         }}
-                        className="bg-success hover:bg-success/90"
+                        className="bg-success hover:bg-success/90 w-full md:w-auto"
                       >
                         <CheckCircle className="h-4 w-4 mr-1" />
                         Approve
@@ -359,6 +478,7 @@ export default function AdminPaymentsPage() {
                           setSelectedPayment(payment);
                           setActionDialog("reject");
                         }}
+                        className="w-full md:w-auto"
                       >
                         <XCircle className="h-4 w-4 mr-1" />
                         Reject
@@ -379,6 +499,7 @@ export default function AdminPaymentsPage() {
           </Card>
         )}
       </div>
+      )}
 
       {/* Approve Dialog */}
       <Dialog open={actionDialog === "approve"} onOpenChange={() => setActionDialog(null)}>
@@ -389,6 +510,12 @@ export default function AdminPaymentsPage() {
               আপনি কি নিশ্চিত {selectedPayment?.userName} এর পেমেন্ট approve করতে চান?
             </DialogDescription>
           </DialogHeader>
+          {errorMessage && (
+            <div className="bg-destructive/10 border border-destructive/20 text-destructive p-3 rounded-lg flex items-start gap-2">
+              <AlertCircle className="h-4 w-4 mt-0.5 flex-shrink-0" />
+              <p className="text-sm">{errorMessage}</p>
+            </div>
+          )}
           {selectedPayment && (
             <div className="bg-muted p-4 rounded-lg space-y-2">
               <p>
@@ -429,6 +556,12 @@ export default function AdminPaymentsPage() {
               {selectedPayment?.userName} এর পেমেন্ট reject করার কারণ লিখুন
             </DialogDescription>
           </DialogHeader>
+          {errorMessage && (
+            <div className="bg-destructive/10 border border-destructive/20 text-destructive p-3 rounded-lg flex items-start gap-2">
+              <AlertCircle className="h-4 w-4 mt-0.5 flex-shrink-0" />
+              <p className="text-sm">{errorMessage}</p>
+            </div>
+          )}
           <Textarea
             placeholder="Rejection কারণ (optional)"
             value={rejectionReason}

@@ -1,4 +1,4 @@
-"use server";
+"use client";
 
 import type { Invoice, Property } from "@/types";
 
@@ -32,13 +32,13 @@ export async function generateReceiptPDF(data: ReceiptData) {
   doc.rect(0, 0, pageWidth, 50, "F");
 
   doc.setTextColor(255, 255, 255);
-  doc.setFontSize(28);
+  doc.setFontSize(26);
   doc.setFont("helvetica", "bold");
-  doc.text("PAYMENT RECEIPT", pageWidth / 2, 18, { align: "center" });
+  doc.text("PAYMENT RECEIPT", pageWidth / 2, 20, { align: "center" });
 
-  doc.setFontSize(11);
+  doc.setFontSize(10);
   doc.setFont("helvetica", "normal");
-  doc.text("PropManager - Professional Property Management System", pageWidth / 2, 28, { align: "center" });
+  doc.text("PropManager - Professional Property Management System", pageWidth / 2, 30, { align: "center" });
 
   // Main content area
   let yPosition = margins.top + 40;
@@ -48,21 +48,21 @@ export async function generateReceiptPDF(data: ReceiptData) {
   doc.setFontSize(10);
   doc.setFont("helvetica", "bold");
   doc.text("Receipt No:", margins.left, yPosition);
-  doc.text("Date Issued:", margins.left + 65, yPosition);
-  doc.text("Status:", margins.left + 130, yPosition);
+  doc.text("Date Issued:", margins.left + 75, yPosition);
+  doc.text("Status:", margins.left + 145, yPosition);
 
   doc.setFont("helvetica", "normal");
-  doc.text(`#${invoice.id.slice(-10).toUpperCase()}`, margins.left + 30, yPosition);
-  doc.text(new Date().toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" }), margins.left + 85, yPosition);
+  doc.text(`#${invoice.id.slice(-10).toUpperCase()}`, margins.left + 35, yPosition);
+  doc.text(new Date().toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" }), margins.left + 105, yPosition);
   
   if (invoice.status === "paid") {
     doc.setTextColor(...successColor);
     doc.setFont("helvetica", "bold");
-    doc.text("PAID", margins.left + 150, yPosition);
+    doc.text("PAID", margins.left + 165, yPosition);
   } else {
     doc.setTextColor(239, 68, 68);
     doc.setFont("helvetica", "bold");
-    doc.text(invoice.status.toUpperCase(), margins.left + 150, yPosition);
+    doc.text(invoice.status.toUpperCase(), margins.left + 165, yPosition);
   }
 
   yPosition += 12;
@@ -110,17 +110,22 @@ export async function generateReceiptPDF(data: ReceiptData) {
   doc.text(`Due Date: ${new Date(invoice.dueDate).toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" })}`, margins.left, yPosition);
   yPosition += 10;
 
-  // Invoice Items Table
+  // Column positions - description on left (60%), amount on right (40%)
+  const descColumnX = margins.left + 3;
+  const amountColumnX = margins.left + 110; // Better spacing, not at edge
+
+  // Invoice Items Table Header
   doc.setFillColor(...lightGray);
   doc.rect(margins.left, yPosition, contentWidth, 8, "F");
 
   doc.setTextColor(...darkColor);
   doc.setFontSize(10);
   doc.setFont("helvetica", "bold");
-  doc.text("Description", margins.left + 3, yPosition + 6);
-  doc.text("Amount", pageWidth - margins.right - 20, yPosition + 6, { align: "right" });
+  
+  doc.text("Description", descColumnX, yPosition + 6);
+  doc.text("Amount", amountColumnX + 50, yPosition + 6, { align: "right" });
 
-  yPosition += 8;
+  yPosition += 14; // Increased gap after header
 
   // Table Items
   const items = [
@@ -135,40 +140,48 @@ export async function generateReceiptPDF(data: ReceiptData) {
   let itemCount = 0;
   items.forEach((item) => {
     if (item.amount > 0) {
-      doc.text(item.label, margins.left + 3, yPosition);
-      doc.text(`৳${item.amount.toLocaleString("en-BD")}`, pageWidth - margins.right - 3, yPosition, { align: "right" });
-      yPosition += 6;
+      doc.setTextColor(...darkColor);
+      doc.text(item.label, descColumnX, yPosition);
+      const amountStr = `${item.amount.toLocaleString("en-BD")}`;
+      doc.text(amountStr, amountColumnX + 50, yPosition, { align: "right" });
+      yPosition += 7;
       itemCount++;
     }
   });
 
   // Summary Section
-  yPosition += 4;
+  yPosition += 10; // Gap after items (at least 1 row)
   doc.setDrawColor(200, 200, 200);
   doc.line(margins.left, yPosition, pageWidth - margins.right, yPosition);
-  yPosition += 6;
+  yPosition += 8;
 
-  // Total Amount
+  // Total Amount with proper padding
   doc.setFontSize(11);
   doc.setFont("helvetica", "bold");
+  doc.setTextColor(...darkColor);
   doc.text("TOTAL AMOUNT:", margins.left, yPosition);
-  doc.text(`৳${invoice.totalAmount.toLocaleString("en-BD")}`, pageWidth - margins.right - 3, yPosition, { align: "right" });
-  yPosition += 7;
+  const totalAmountText = `${invoice.totalAmount.toLocaleString("en-BD")}`;
+  doc.text(totalAmountText, amountColumnX + 50, yPosition, { align: "right" });
+  yPosition += 8;
 
   // Paid Amount
+  doc.setFont("helvetica", "bold");
   doc.setTextColor(...successColor);
   doc.text("PAID AMOUNT:", margins.left, yPosition);
-  doc.text(`৳${invoice.paidAmount.toLocaleString("en-BD")}`, pageWidth - margins.right - 3, yPosition, { align: "right" });
-  yPosition += 7;
+  const paidAmountText = `${invoice.paidAmount.toLocaleString("en-BD")}`;
+  doc.text(paidAmountText, amountColumnX + 50, yPosition, { align: "right" });
+  yPosition += 8;
 
   // Due Amount
   if (invoice.dueAmount > 0) {
+    doc.setFont("helvetica", "bold");
     doc.setTextColor(239, 68, 68);
     doc.text("DUE AMOUNT:", margins.left, yPosition);
-    doc.text(`৳${invoice.dueAmount.toLocaleString("en-BD")}`, pageWidth - margins.right - 3, yPosition, { align: "right" });
+    const dueAmountText = `${invoice.dueAmount.toLocaleString("en-BD")}`;
+    doc.text(dueAmountText, amountColumnX + 50, yPosition, { align: "right" });
     yPosition += 10;
   } else {
-    yPosition += 3;
+    yPosition += 2;
   }
 
   // Payment Status Box
@@ -198,7 +211,7 @@ export async function generateReceiptPDF(data: ReceiptData) {
     doc.text("⚠ PAYMENT OVERDUE", pageWidth / 2, yPosition + 6, { align: "center" });
     doc.setFontSize(9);
     doc.setFont("helvetica", "normal");
-    doc.text(`Please pay ৳${invoice.dueAmount.toLocaleString("en-BD")} immediately`, pageWidth / 2, yPosition + 12, { align: "center" });
+    doc.text(`Please pay ${invoice.dueAmount.toLocaleString("en-BD")} immediately`, pageWidth / 2, yPosition + 12, { align: "center" });
     yPosition += 20;
   }
 
@@ -230,7 +243,17 @@ export async function generateReceiptPDF(data: ReceiptData) {
 export async function downloadReceiptPDF(data: ReceiptData, filename?: string) {
   const doc = await generateReceiptPDF(data);
   const defaultFilename = `receipt-${data.invoice.tenantName.replace(/\s+/g, "-")}-${data.invoice.month}.pdf`;
-  doc.save(filename || defaultFilename);
+  
+  // Create blob and download in browser
+  const blob = doc.output("blob");
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename || defaultFilename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
 }
 
 export async function getReceiptPDFBlob(data: ReceiptData): Promise<Blob> {

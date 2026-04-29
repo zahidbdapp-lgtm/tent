@@ -3,7 +3,9 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { useAuth } from "@/contexts/auth-context";
-import { sendDueRentNotification } from "@/lib/emailjs";
+ import { databasePropertiesToTypescript } from "@/lib/supabase/propertyConverter";
+ import { databaseTenantsToTypescript } from "@/lib/supabase/tenantConverter";
+ import { databaseInvoicesToTypescript, typescriptInvoiceToDatabase } from "@/lib/supabase/invoiceConverter";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -56,17 +58,17 @@ import {
   Pencil,
   Trash2,
   Receipt,
-  Mail,
   CheckCircle,
   Clock,
   AlertCircle,
   Download,
   FileText,
-  Send,
   TrendingUp,
   DollarSign,
+  MessageSquare,
 } from "lucide-react";
 import type { Invoice, Tenant, Property, InvoiceStatus } from "@/types";
+import { getSMSTemplate, openSMSApp } from "@/lib/sms-templates";
 
 interface InvoiceFormData {
   tenantId: string;
@@ -122,29 +124,41 @@ export default function InvoicesPage() {
       const { data: propertiesData, error: propertiesError } = await supabase
         .from("properties")
         .select("*")
-        .eq("ownerId", userData.id);
+        .eq("owner_id", userData.id);
 
       if (propertiesError) throw propertiesError;
-      setProperties(propertiesData || []);
+      setProperties(databasePropertiesToTypescript(propertiesData as any || []));
 
       // Fetch tenants
       const { data: tenantsData, error: tenantsError } = await supabase
         .from("tenants")
         .select("*")
-        .eq("ownerId", userData.id)
+        .eq("owner_id", userData.id)
         .eq("status", "active");
 
       if (tenantsError) throw tenantsError;
-      setTenants(tenantsData || []);
+      const convertedTenants = databaseTenantsToTypescript(tenantsData as any || []);
+      setTenants(convertedTenants);
 
       // Fetch invoices
       const { data: invoicesData, error: invoicesError } = await supabase
         .from("invoices")
         .select("*")
-        .eq("ownerId", userData.id);
+        .eq("owner_id", userData.id);
 
       if (invoicesError) throw invoicesError;
-      setInvoices((invoicesData || []).sort((a, b) =>
+      
+      // Convert invoices and populate tenant phone from tenants data
+      const convertedInvoices = databaseInvoicesToTypescript(invoicesData as any || []);
+      const invoicesWithPhones = convertedInvoices.map(invoice => {
+        const tenant = convertedTenants.find(t => t.id === invoice.tenantId);
+        return {
+          ...invoice,
+          tenantPhone: tenant?.phone || invoice.tenantPhone
+        };
+      });
+      
+      setInvoices(invoicesWithPhones.sort((a, b) =>
         new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
       ));
     } catch (error) {
@@ -157,7 +171,7 @@ export default function InvoicesPage() {
 
   useEffect(() => {
     fetchData();
-  }, [user]);
+  }, [userData]);
 
   const handleOpenDialog = (invoice?: Invoice) => {
     if (invoice) {
@@ -219,16 +233,24 @@ export default function InvoicesPage() {
       const dueAmount = totalAmount - formData.paidAmount;
 
       let status: InvoiceStatus = formData.status;
-      if (formData.paidAmount >= totalAmount) {
-        status = "paid";
-      } else if (formData.paidAmount > 0) {
-        status = "partial";
-      } else if (new Date(formData.dueDate) < new Date() && status !== "paid") {
-        status = "overdue";
+      
+      // Only auto-calculate status when creating new invoice, not when editing
+      if (!selectedInvoice) {
+        if (formData.paidAmount >= totalAmount) {
+          status = "paid";
+        } else if (formData.paidAmount > 0) {
+          status = "partial";
+        } else if (new Date(formData.dueDate) < new Date()) {
+          status = "overdue";
+        }
       }
+      // When editing, use the explicitly selected status from the form
 
       const now = new Date().toISOString();
-      const invoiceData = {
+      const paymentDateValue = status === "paid" ? now : null;
+      
+      // Build invoice object in TypeScript format (camelCase)
+      const invoiceBase = {
         tenantId: formData.tenantId,
         propertyId: tenant.propertyId,
         ownerId: userData.id,
@@ -246,17 +268,30 @@ export default function InvoicesPage() {
         dueAmount,
         dueDate: formData.dueDate,
         status,
-        paymentDate: status === "paid" ? now : null,
-        updatedAt: now,
+        paymentDate: paymentDateValue,
       };
 
       if (selectedInvoice) {
+        // Update
+        const invoiceToUpdate = { ...invoiceBase, updatedAt: now };
+        const dbInvoiceData = typescriptInvoiceToDatabase(invoiceToUpdate);
         const { error } = await supabase
           .from("invoices")
-          .update(invoiceData)
+          .update(dbInvoiceData)
           .eq("id", selectedInvoice.id);
         if (error) throw error;
-        toast.success("Invoice updated successfully");
+
+        // Send SMS if status changed to paid (payment confirmation)
+        if (status === "paid" && selectedInvoice.status !== "paid" && tenant.phone) {
+          const smsMessage = getSMSTemplate("payment_received_en", {
+            tenantName: tenant.name,
+            amount: totalAmount,
+          });
+          openSMSApp(tenant.phone, smsMessage);
+          toast.success("Invoice marked as paid - SMS app opened");
+        } else {
+          toast.success("Invoice updated successfully");
+        }
 
         // Auto download receipt if payment is complete
         if (status === "paid" && selectedInvoice.status !== "paid") {
@@ -264,7 +299,7 @@ export default function InvoicesPage() {
           setTimeout(async () => {
             const { downloadReceiptPDF } = await import("@/lib/pdf-receipt");
             await downloadReceiptPDF({
-              invoice: { ...selectedInvoice, ...invoiceData, paidAmount: formData.paidAmount, status: "paid" } as Invoice,
+              invoice: { ...selectedInvoice, ...invoiceBase, paidAmount: formData.paidAmount, status: "paid" } as Invoice,
               property,
               ownerName: userData?.displayName || undefined,
             });
@@ -272,11 +307,31 @@ export default function InvoicesPage() {
           }, 500);
         }
       } else {
+        // Create
+        const invoiceToCreate = { 
+          ...invoiceBase, 
+          createdAt: now, 
+          emailSent: false, 
+          emailSentAt: null 
+        };
+        const dbInvoiceData = typescriptInvoiceToDatabase(invoiceToCreate);
         const { error } = await supabase
           .from("invoices")
-          .insert({ ...invoiceData, createdAt: now, emailSent: false, emailSentAt: null });
+          .insert(dbInvoiceData);
         if (error) throw error;
-        toast.success("Invoice created successfully");
+        
+        // Send SMS when invoice is created (payment due reminder)
+        if (tenant.phone) {
+          const smsMessage = getSMSTemplate("due_invoice_en", {
+            tenantName: tenant.name,
+            amount: totalAmount,
+            dueDate: new Date(formData.dueDate).toLocaleDateString(),
+          });
+          openSMSApp(tenant.phone, smsMessage);
+          toast.success("Invoice created - SMS app opened for payment reminder");
+        } else {
+          toast.success("Invoice created successfully");
+        }
       }
 
       setIsDialogOpen(false);
@@ -308,37 +363,38 @@ export default function InvoicesPage() {
     }
   };
 
-  const handleSendReminder = async (invoice: Invoice) => {
-    setIsSendingEmail(invoice.id);
-
-    try {
-      const property = properties.find((p) => p.id === invoice.propertyId);
-      const success = await sendDueRentNotification(
-        invoice.tenantEmail,
-        invoice.tenantName,
-        invoice.dueAmount,
-        new Date(invoice.dueDate).toLocaleDateString(),
-        property?.name || "Property",
-        invoice.unitNumber
-      );
-
-      if (success) {
-        const { error } = await supabase
-          .from("invoices")
-          .update({ emailSent: true, emailSentAt: new Date().toISOString() })
-          .eq("id", invoice.id);
-        if (error) throw error;
-        toast.success("Reminder sent successfully");
-        fetchData();
-      } else {
-        toast.error("Failed to send reminder. Check EmailJS configuration.");
-      }
-    } catch (error) {
-      console.error("Failed to send reminder:", error);
-      toast.error("Failed to send reminder");
-    } finally {
-      setIsSendingEmail(null);
+  const handleSendReminderSMS = (invoice: Invoice) => {
+    if (!invoice.tenantPhone) {
+      toast.error("Tenant phone number not available");
+      return;
     }
+
+    let message: string;
+    
+    // Choose message template based on invoice status
+    if (invoice.status === "paid") {
+      message = getSMSTemplate("payment_received_en", {
+        tenantName: invoice.tenantName,
+        amount: invoice.totalAmount,
+      });
+    } else if (invoice.status === "overdue") {
+      message = getSMSTemplate("due_invoice_en", {
+        tenantName: invoice.tenantName,
+        amount: invoice.dueAmount,
+        dueDate: invoice.dueDate ? new Date(invoice.dueDate).toLocaleDateString() : undefined,
+      });
+    } else if (invoice.status === "partial") {
+      message = `প্রিয় ${invoice.tenantName},\n\nআপনার ${invoice.month} মাসের বকেয়া: ৳${invoice.dueAmount.toLocaleString()}\n\nঅনুগ্রহ করে যথাশীঘ্র পরিশোধ করুন।`;
+    } else {
+      message = getSMSTemplate("invoice_reminder_en", {
+        tenantName: invoice.tenantName,
+        dueAmount: invoice.dueAmount,
+        dueDate: invoice.dueDate ? new Date(invoice.dueDate).toLocaleDateString() : undefined,
+      });
+    }
+
+    openSMSApp(invoice.tenantPhone, message);
+    toast.success("SMS app opened with message");
   };
 
   const getStatusBadge = (status: InvoiceStatus) => {
@@ -386,42 +442,10 @@ export default function InvoicesPage() {
     await downloadReceiptPDF({
       invoice,
       property,
-      ownerName: user?.displayName || undefined,
+      ownerName: userData?.displayName || undefined,
       ownerPhone: undefined,
     });
     toast.success("Receipt downloaded successfully");
-  };
-
-  const handleSendReceipt = async (invoice: Invoice) => {
-    if (!invoice.tenantEmail) {
-      toast.error("Tenant email not available");
-      return;
-    }
-
-    setIsSendingEmail(invoice.id);
-
-    try {
-      const property = properties.find((p) => p.id === invoice.propertyId);
-      const { downloadReceiptPDF } = await import("@/lib/pdf-receipt");
-      
-      // For now, we just download the PDF and show a message
-      // In a real app, you would send this via an email API
-      await downloadReceiptPDF({
-        invoice,
-        property,
-      ownerName: userData?.displayName || undefined,
-      });
-      
-      toast.success(
-        `Receipt downloaded! Please send it manually to ${invoice.tenantEmail}`,
-        { duration: 5000 }
-      );
-    } catch (error) {
-      console.error("Failed to generate receipt:", error);
-      toast.error("Failed to generate receipt");
-    } finally {
-      setIsSendingEmail(null);
-    }
   };
 
   if (loading) {
@@ -687,6 +711,24 @@ export default function InvoicesPage() {
                         />
                       </Field>
 
+                      <div className="mt-3">
+                        <Field>
+                          <FieldLabel htmlFor="status">Invoice Status</FieldLabel>
+                          <Select value={formData.status} onValueChange={(value) => setFormData({ ...formData, status: value as InvoiceStatus })}>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select status" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {statusOptions.map((option) => (
+                                <SelectItem key={option.value} value={option.value}>
+                                  {option.label}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </Field>
+                      </div>
+
                       <div className="p-3 bg-red-50 dark:bg-red-950 rounded-lg border border-red-200 dark:border-red-800 mt-3">
                         <div className="flex justify-between items-center">
                           <span className="font-semibold">Due Amount:</span>
@@ -802,43 +844,31 @@ export default function InvoicesPage() {
                           <span className="hidden sm:inline text-xs">ডাউনলোড</span>
                         </Button>
 
-                        {/* Send Receipt via Email - Only for paid invoices */}
-                        {invoice.status === "paid" && invoice.tenantEmail && (
+                        {/* Send SMS Message - Always available with phone */}
+                        {invoice.tenantPhone ? (
                           <Button
                             variant="ghost"
                             size="sm"
-                            onClick={() => handleSendReceipt(invoice)}
-                            disabled={isSendingEmail === invoice.id}
+                            onClick={() => handleSendReminderSMS(invoice)}
                             className="gap-1"
-                            title="Send Receipt to Tenant"
+                            title="Send SMS message to tenant"
                           >
-                            {isSendingEmail === invoice.id ? (
-                              <Spinner className="h-4 w-4" />
-                            ) : (
-                              <Send className="h-4 w-4" />
-                            )}
-                            <span className="hidden sm:inline text-xs">পাঠান</span>
+                            <MessageSquare className="h-4 w-4 text-blue-600" />
+                            <span className="hidden sm:inline text-xs">বার্তা</span>
+                          </Button>
+                        ) : (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            disabled
+                            title="Phone number not available"
+                            className="gap-1 cursor-not-allowed opacity-50"
+                          >
+                            <MessageSquare className="h-4 w-4 text-muted-foreground" />
+                            <span className="hidden sm:inline text-xs text-muted-foreground">বার্তা</span>
                           </Button>
                         )}
 
-                        {/* Send Reminder - Only for unpaid/overdue */}
-                        {invoice.status !== "paid" && (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleSendReminder(invoice)}
-                            disabled={isSendingEmail === invoice.id}
-                            className="gap-1"
-                            title="Send reminder email"
-                          >
-                            {isSendingEmail === invoice.id ? (
-                              <Spinner className="h-4 w-4" />
-                            ) : (
-                              <Mail className="h-4 w-4" />
-                            )}
-                            <span className="hidden sm:inline text-xs">রিমাইন্ডার</span>
-                          </Button>
-                        )}
                         <Button
                           variant="ghost"
                           size="sm"
@@ -847,6 +877,7 @@ export default function InvoicesPage() {
                         >
                           <Pencil className="h-4 w-4" />
                         </Button>
+
                         <Button
                           variant="ghost"
                           size="sm"

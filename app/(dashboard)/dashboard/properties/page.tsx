@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { useAuth } from "@/contexts/auth-context";
+import { databasePropertiesToTypescript, typescriptPropertyToDatabase } from "@/lib/supabase/propertyConverter";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -75,16 +76,16 @@ export default function PropertiesPage() {
   });
 
   const fetchProperties = async () => {
-    if (!user) return;
+    if (!userData) return;
 
     try {
       const { data, error } = await supabase
         .from("properties")
         .select("*")
-        .eq("ownerId", userData.id);
+        .eq("owner_id", userData.id);
 
       if (error) throw error;
-      setProperties(data || []);
+      setProperties(databasePropertiesToTypescript(data as any || []));
     } catch (error) {
       console.error("Failed to fetch properties:", error);
       toast.error("Failed to load properties");
@@ -95,7 +96,7 @@ export default function PropertiesPage() {
 
   useEffect(() => {
     fetchProperties();
-  }, [user]);
+  }, [userData]);
 
   const handleOpenDialog = (property?: Property) => {
     if (property) {
@@ -118,39 +119,52 @@ export default function PropertiesPage() {
     setIsDialogOpen(true);
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!user) return;
+   const handleSubmit = async (e: React.FormEvent) => {
+     e.preventDefault();
+     if (!userData) return;
 
-    setIsSubmitting(true);
+     setIsSubmitting(true);
 
-    try {
-      const now = new Date().toISOString();
-      if (selectedProperty) {
-        // Update existing property
-        const { error } = await supabase
-          .from("properties")
-          .update({ ...formData, updatedAt: now })
-          .eq("id", selectedProperty.id);
-        if (error) throw error;
-        toast.success("Property updated successfully");
-      } else {
-        // Create new property
-        const { error } = await supabase
-          .from("properties")
-          .insert({ ...formData, ownerId: userData.id, createdAt: now, updatedAt: now });
-        if (error) throw error;
-        toast.success("Property created successfully");
-      }
-      setIsDialogOpen(false);
-      fetchProperties();
-    } catch (error) {
-      console.error("Failed to save property:", error);
-      toast.error("Failed to save property");
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
+     try {
+       const now = new Date().toISOString();
+       
+       if (selectedProperty) {
+         // Update existing property
+         const dbPropertyData = typescriptPropertyToDatabase({
+           ...formData,
+           updatedAt: now,
+         });
+         
+         const { error } = await supabase
+           .from("properties")
+           .update(dbPropertyData)
+           .eq("id", selectedProperty.id);
+         if (error) throw error;
+         toast.success("Property updated successfully");
+       } else {
+         // Create new property
+         const dbPropertyData = typescriptPropertyToDatabase({
+           ...formData,
+           ownerId: userData.id,
+           createdAt: now,
+           updatedAt: now,
+         });
+         
+         const { error } = await supabase
+           .from("properties")
+           .insert(dbPropertyData);
+         if (error) throw error;
+         toast.success("Property created successfully");
+       }
+       setIsDialogOpen(false);
+       fetchProperties();
+     } catch (error) {
+       console.error("Failed to save property:", error);
+       toast.error("Failed to save property");
+     } finally {
+       setIsSubmitting(false);
+     }
+   };
 
   const handleDelete = async () => {
     if (!selectedProperty) return;

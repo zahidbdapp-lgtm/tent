@@ -4,6 +4,8 @@ import { useEffect, useState, useRef } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { uploadImage } from "@/lib/storageHelper";
 import { useAuth } from "@/contexts/auth-context";
+import { databaseTenantsToTypescript, typescriptTenantToDatabase } from "@/lib/supabase/tenantConverter";
+import { databasePropertiesToTypescript } from "@/lib/supabase/propertyConverter";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -152,8 +154,8 @@ export default function TenantsPage() {
 
   const fetchData = async () => {
     console.log("[fetchData] Starting...");
-    if (!user) {
-      console.log("[fetchData] No user, returning early");
+    if (!userData) {
+      console.log("[fetchData] No user data, returning early");
       return;
     }
 
@@ -170,7 +172,7 @@ export default function TenantsPage() {
       const { data: propertiesData, error: propertiesError } = await supabase
         .from("properties")
         .select("*")
-        .eq("ownerId", userData.id);
+        .eq("owner_id", userData.id);
 
       if (propertiesError) {
         console.error("[fetchData] Properties error:", {
@@ -181,13 +183,13 @@ export default function TenantsPage() {
         throw propertiesError;
       }
       console.log("[fetchData] Properties fetched:", propertiesData?.length);
-      setProperties(propertiesData || []);
+      setProperties(databasePropertiesToTypescript(propertiesData as any || []));
 
       console.log("[fetchData] Fetching tenants from Supabase...");
       const { data: tenantsData, error: tenantsError } = await supabase
         .from("tenants")
         .select("*")
-        .eq("ownerId", userData.id);
+        .eq("owner_id", userData.id);
 
       if (tenantsError) {
         console.error("[fetchData] Tenants error:", {
@@ -198,7 +200,7 @@ export default function TenantsPage() {
         throw tenantsError;
       }
       console.log("[fetchData] Tenants fetched:", tenantsData?.length);
-      setTenants(tenantsData || []);
+      setTenants(databaseTenantsToTypescript(tenantsData as any || []));
     } catch (error) {
       console.error("[fetchData] Caught error:", error);
       console.error("[fetchData] Error type:", typeof error);
@@ -217,7 +219,7 @@ export default function TenantsPage() {
 
   useEffect(() => {
     fetchData();
-  }, [user, isDemoUser, isAdmin]);
+  }, [userData?.id, isDemoUser, isAdmin]);
 
     const handleOpenDialog = (tenant?: Tenant) => {
       if (tenant) {
@@ -256,11 +258,11 @@ export default function TenantsPage() {
       setIsDialogOpen(true);
     };
 
-    const uploadFile = async (file: File, folder: string): Promise<string> => {
-      if (!user) {
+    const uploadFile = async (file: File, bucket: string): Promise<string> => {
+      if (!userData) {
         throw new Error("User not authenticated. Please log in.");
       }
-      return await uploadImage(file, folder);
+      return await uploadImage(file, bucket);
     };
 
   const handleFileChange = (
@@ -270,16 +272,12 @@ export default function TenantsPage() {
     const file = e.target.files?.[0];
     if (!file) return;
 
-     // Image files max 500KB (increased from 100KB)
-     const maxImageSize = 500 * 1024; // 500KB
+     // Image files max 100KB - STRICT LIMIT
+     const maxImageSize = 100 * 1024; // 100KB
      
      if (file.size > maxImageSize) {
-       // Show warning dialog
-       setFileWarning({
-         show: true,
-         file: file,
-         type: type,
-       });
+       // Reject file - show error toast
+       toast.error(`ফাইল খুব বড়! ${Math.round(file.size / 1024)}KB আপনার ফাইল। সর্বোচ্চ 100KB পর্যন্ত ফাইল আপলোড করুন।`);
        e.target.value = '';
        return;
      }
@@ -310,40 +308,19 @@ export default function TenantsPage() {
    };
 
    const handleFileWarningAccept = () => {
-    if (!fileWarning.file || !fileWarning.type) return;
-    
-    // Proceed with upload even though it's large
-    const preview = URL.createObjectURL(fileWarning.file);
-    
-    switch (fileWarning.type) {
-      case "nidFront":
-        setNidFrontFile(fileWarning.file);
-        setNidFrontPreview(preview);
-        break;
-      case "nidBack":
-        setNidBackFile(fileWarning.file);
-        setNidBackPreview(preview);
-        break;
-      case "photo":
-        setPhotoFile(fileWarning.file);
-        setPhotoPreview(preview);
-        break;
-    }
-    
+    // This function is no longer used - files are rejected before showing this dialog
     setFileWarning({ show: false, file: null, type: null });
-    toast.success("ফাইল নির্বাচিত হয়েছে (প্রি-অপ্টিমাইজেশনের জন্য সুপারিশ)");
   };
 
   const handleFileWarningReject = () => {
     setFileWarning({ show: false, file: null, type: null });
-    toast.error("ফাইল বাতিল করা হয়েছে। আরও একটি ছোট ফাইল চেষ্টা করুন।");
    };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     console.log("[Form] Submit triggered");
 
-    if (!user) {
+    if (!userData) {
       toast.error("আপনাকে প্রথমে লগইন করতে হবে।");
       return;
     }
@@ -384,17 +361,15 @@ export default function TenantsPage() {
       console.log("[Supabase] Preparing data...");
 
       const now = new Date().toISOString();
-      const tenantData = {
+      
+      // Build tenant object in TypeScript format (camelCase)
+      const tenantBase = {
         propertyId: formData.propertyId,
-        ownerId: userData.id,
         unitNumber: formData.unitNumber,
         name: formData.name,
         email: formData.email,
         phone: formData.phone,
         nid: formData.nid,
-        nidFrontUrl,
-        nidBackUrl,
-        photoUrl,
         monthlyRent: parseFloat(formData.monthlyRent) || 0,
         gasCharge: parseFloat(formData.gasCharge) || 0,
         waterCharge: parseFloat(formData.waterCharge) || 0,
@@ -405,24 +380,34 @@ export default function TenantsPage() {
         advanceMonths: parseInt(formData.advanceMonths) || 0,
         moveInDate: formData.moveInDate || null,
         status: formData.status,
-        updatedAt: now,
       };
 
-      console.log("[Supabase] Saving tenant...");
+      // Assign file URLs (preserve existing if not uploading new)
+      const tenantWithFiles = {
+        ...tenantBase,
+        nidFrontUrl: nidFrontUrl || selectedTenant?.nidFrontUrl || '',
+        nidBackUrl: nidBackUrl || selectedTenant?.nidBackUrl || '',
+        photoUrl: photoUrl || selectedTenant?.photoUrl || '',
+      };
+
       if (selectedTenant) {
+        // Update
+        const tenantToUpdate = { ...tenantWithFiles, updatedAt: now };
+        const dbTenantData = typescriptTenantToDatabase(tenantToUpdate);
         const { error } = await supabase
           .from("tenants")
-          .update(tenantData)
+          .update(dbTenantData)
           .eq("id", selectedTenant.id);
         if (error) throw error;
-        console.log("[Supabase] Update successful");
         toast.success("ভাড়াটিয়া আপডেট হয়েছে");
       } else {
+        // Create
+        const tenantToCreate = { ...tenantWithFiles, ownerId: userData.id, createdAt: now, updatedAt: now };
+        const dbTenantData = typescriptTenantToDatabase(tenantToCreate);
         const { error } = await supabase
           .from("tenants")
-          .insert({ ...tenantData, createdAt: now });
+          .insert(dbTenantData);
         if (error) throw error;
-        console.log("[Supabase] Create successful");
         toast.success("ভাড়াটিয়া যোগ হয়েছে");
       }
 
@@ -1098,23 +1083,18 @@ export default function TenantsPage() {
       }}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>বড় ফাইল সতর্কতা</AlertDialogTitle>
+            <AlertDialogTitle>ফাইল আকার সীমা অতিক্রম করেছে</AlertDialogTitle>
              <AlertDialogDescription>
-               আপনার ফাইল {fileWarning.file ? `${Math.round(fileWarning.file.size / 1024)}KB` : '?'} এর বিশাল, যা সর্বোচ্চ 500KB এর চেয়ে বেশি। 
+               আপনার ফাইল {fileWarning.file ? `${Math.round(fileWarning.file.size / 1024)}KB` : '?'} এর বিশাল। সর্বোচ্চ 100KB পর্যন্ত ফাইল আপলোড করা যায়। 
                <br/>
                <br/>
-               এটি আপলোড করতে আরও সময় লাগবে এবং লোডিং ধীর হতে পারে। 
-               <br/>
-               আপনি কি এগিয়ে যেতে চান?
+               একটি ছোট ফাইল নির্বাচন করুন।
              </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel onClick={handleFileWarningReject}>
-              অন্য ফাইল বেছে নিন
+              ঠিক আছে
             </AlertDialogCancel>
-            <AlertDialogAction onClick={handleFileWarningAccept}>
-              এই ফাইল ব্যবহার করুন
-            </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
        </AlertDialog>

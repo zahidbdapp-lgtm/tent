@@ -34,6 +34,7 @@ import {
 } from "@/components/ui/dialog";
 import { supabase } from "@/lib/supabaseClient";
 import { User, SubscriptionStatus, SubscriptionPlan, PRICING_PLANS } from "@/types";
+ import { databaseUserToTypescriptUser, typescriptUserToDatabaseUser } from "@/lib/supabase/userConverter";
 import {
   Search,
   MoreHorizontal,
@@ -51,6 +52,7 @@ import {
   Clock,
   UserCheck,
   UserX,
+  Lock,
 } from "lucide-react";
 import { useAuth } from "@/contexts/auth-context";
 import { Spinner } from "@/components/ui/spinner";
@@ -64,9 +66,11 @@ export default function AdminUsersPage() {
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [actionDialog, setActionDialog] = useState<{
-    type: "activate" | "deactivate" | "extend" | "details" | "delete" | null;
+    type: "activate" | "deactivate" | "extend" | "details" | "delete" | "change_password" | null;
     plan?: SubscriptionPlan;
   }>({ type: null });
+  const [newPassword, setNewPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
 
   useEffect(() => {
@@ -103,7 +107,7 @@ export default function AdminUsersPage() {
       const { data, error, status, statusText } = await supabase
         .from("users")
         .select("*")
-        .order("createdAt", { ascending: false });
+        .order("created_at", { ascending: false });
 
       console.log("[fetchUsers] Response:", { 
         dataLength: data?.length, 
@@ -124,12 +128,13 @@ export default function AdminUsersPage() {
         throw error;
       }
 
-      const usersData = (data || []).map(user => ({
-        ...user,
-        // Ensure dates are strings; no conversion needed
-      })) as User[];
+      // Convert database format (snake_case) to TypeScript format (camelCase)
+      const usersData = (data || [])
+        .map(dbUser => databaseUserToTypescriptUser(dbUser))
+        .filter((user): user is User => user !== null);
 
       console.log("[fetchUsers] Fetched", usersData.length, "users");
+      console.log("[fetchUsers] First user data:", usersData[0]);
       setUsers(usersData);
     } catch (error) {
       console.error("[fetchUsers] Caught error:", error);
@@ -154,19 +159,28 @@ export default function AdminUsersPage() {
 
     try {
       const now = new Date().toISOString();
-      const updateData: Record<string, unknown> = {
+      
+      // Build update object in camelCase
+      const updateData: Partial<User> = {
         subscriptionStatus: newStatus,
         updatedAt: now,
-        rejectionReason: newStatus === "banned" || newStatus === "payment_due" ? reason : null,
       };
+      
+      if (newStatus === "banned" || newStatus === "payment_due") {
+        updateData.rejectionReason = reason || null;
+      } else {
+        updateData.rejectionReason = null;
+      }
 
       if (newStatus === "active" && !selectedUser.subscriptionStartDate) {
         updateData.subscriptionStartDate = now;
       }
 
+      const dbUpdates = typescriptUserToDatabaseUser(updateData);
+
       const { error } = await supabase
         .from("users")
-        .update(updateData)
+        .update(dbUpdates)
         .eq("id", selectedUser.id);
 
       if (error) throw error;
@@ -193,16 +207,20 @@ export default function AdminUsersPage() {
       expiryDate.setMonth(expiryDate.getMonth() + duration);
       const expiryIso = expiryDate.toISOString();
 
+      const updateData = {
+        subscriptionStatus: "active" as const,
+        subscriptionPlan: plan,
+        subscriptionStartDate: startDate,
+        subscriptionExpiry: expiryIso,
+        updatedAt: startDate,
+        rejectionReason: null,
+      };
+
+      const dbUpdates = typescriptUserToDatabaseUser(updateData);
+
       const { error } = await supabase
         .from("users")
-        .update({
-          subscriptionStatus: "active",
-          subscriptionPlan: plan,
-          subscriptionStartDate: startDate,
-          subscriptionExpiry: expiryIso,
-          updatedAt: new Date().toISOString(),
-          rejectionReason: null,
-        })
+        .update(dbUpdates)
         .eq("id", selectedUser.id);
 
       if (error) throw error;
@@ -223,13 +241,17 @@ export default function AdminUsersPage() {
 
     try {
       const now = new Date().toISOString();
+      const updateData = {
+        subscriptionStatus: "payment_due" as const,
+        updatedAt: now,
+        rejectionReason: null,
+      };
+      
+      const dbUpdates = typescriptUserToDatabaseUser(updateData);
+
       const { error } = await supabase
         .from("users")
-        .update({
-          subscriptionStatus: "payment_due",
-          updatedAt: now,
-          rejectionReason: null,
-        })
+        .update(dbUpdates)
         .eq("id", selectedUser.id);
 
       if (error) throw error;
@@ -253,14 +275,19 @@ export default function AdminUsersPage() {
       const newExpiry = new Date(currentExpiry);
       newExpiry.setMonth(newExpiry.getMonth() + months);
       const newExpiryIso = newExpiry.toISOString();
+      const now = new Date().toISOString();
+
+      const updateData = {
+        subscriptionExpiry: newExpiryIso,
+        subscriptionStatus: "active" as const,
+        updatedAt: now,
+      };
+
+      const dbUpdates = typescriptUserToDatabaseUser(updateData);
 
       const { error } = await supabase
         .from("users")
-        .update({
-          subscriptionExpiry: newExpiryIso,
-          subscriptionStatus: "active",
-          updatedAt: new Date().toISOString(),
-        })
+        .update(dbUpdates)
         .eq("id", selectedUser.id);
 
       if (error) throw error;
@@ -280,17 +307,58 @@ export default function AdminUsersPage() {
     setIsProcessing(true);
 
     try {
-      const { error } = await supabase
-        .from("users")
-        .delete()
-        .eq("id", selectedUser.id);
-      if (error) throw error;
+      const response = await fetch("/api/admin/delete-user", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ userId: selectedUser.id }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "ইউজার ডিলিট করতে সমস্যা হয়েছে");
+      }
 
       await fetchUsers();
       setActionDialog({ type: null });
       setSelectedUser(null);
     } catch (error) {
       console.error("Error deleting user:", error);
+      alert(error instanceof Error ? error.message : "ইউজার ডিলিট করতে সমস্যা হয়েছে");
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const handleChangePassword = async () => {
+    if (!selectedUser || !newPassword.trim()) return;
+    setIsProcessing(true);
+
+    try {
+      const response = await fetch("/api/admin/change-user-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          userId: selectedUser.id,
+          newPassword: newPassword,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.details || data.error || "Failed to change password");
+      }
+
+      setNewPassword("");
+      setActionDialog({ type: null });
+      setSelectedUser(null);
+      alert(`${selectedUser.displayName} এর পাসওয়ার্ড সফলভাবে পরিবর্তন হয়েছে`);
+    } catch (error: any) {
+      console.error("Error changing password:", error);
+      alert(error.message || "পাসওয়ার্ড পরিবর্তন করতে সমস্যা হয়েছে");
     } finally {
       setIsProcessing(false);
     }
@@ -303,8 +371,6 @@ export default function AdminUsersPage() {
     switch (user.subscriptionStatus) {
       case "active":
         return <Badge className="bg-success">Active</Badge>;
-      case "demo":
-        return <Badge variant="secondary">Demo</Badge>;
       case "payment_pending":
         return <Badge className="bg-warning text-warning-foreground">Payment Pending</Badge>;
       case "banned":
@@ -366,14 +432,6 @@ export default function AdminUsersPage() {
               {users.filter((u) => u.subscriptionStatus === "payment_pending").length}
             </div>
             <p className="text-xs text-muted-foreground">Payment Pending</p>
-          </CardContent>
-        </Card>
-        <Card className="cursor-pointer hover:border-primary transition-colors" onClick={() => setStatusFilter("demo")}>
-          <CardContent className="pt-4">
-            <div className="text-2xl font-bold">
-              {users.filter((u) => u.subscriptionStatus === "demo").length}
-            </div>
-            <p className="text-xs text-muted-foreground">Demo</p>
           </CardContent>
         </Card>
         <Card className="cursor-pointer hover:border-primary transition-colors" onClick={() => setStatusFilter("payment_due")}>
@@ -495,16 +553,6 @@ export default function AdminUsersPage() {
                             <DropdownMenuItem
                               onClick={() => {
                                 setSelectedUser(user);
-                                handleStatusChange("demo");
-                              }}
-                              disabled={user.subscriptionStatus === "demo"}
-                            >
-                              <Eye className="mr-2 h-4 w-4 text-blue-500" />
-                              Demo
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              onClick={() => {
-                                setSelectedUser(user);
                                 handleStatusChange("active");
                               }}
                               disabled={user.subscriptionStatus === "active"}
@@ -588,6 +636,19 @@ export default function AdminUsersPage() {
                                 </DropdownMenuItem>
                               </>
                             )}
+
+                            <DropdownMenuSeparator />
+
+                            {/* Change Password */}
+                            <DropdownMenuItem
+                              onClick={() => {
+                                setSelectedUser(user);
+                                setActionDialog({ type: "change_password" });
+                              }}
+                            >
+                              <Lock className="mr-2 h-4 w-4 text-blue-600" />
+                              পাসওয়ার্ড পরিবর্তন করুন
+                            </DropdownMenuItem>
 
                             <DropdownMenuSeparator />
 
@@ -829,9 +890,20 @@ export default function AdminUsersPage() {
           <DialogHeader>
             <DialogTitle>ইউজার ডিলিট করুন</DialogTitle>
             <DialogDescription>
-              আপনি কি নিশ্চিত যে {selectedUser?.displayName} ({selectedUser?.email}) কে সম্পূর্ণভাবে ডিলিট করতে চান? এই কাজ আন্ডু করা যাবে না।
+              আপনি কি নিশ্চিত যে {selectedUser?.displayName} ({selectedUser?.email}) কে সম্পূর্ণভাবে ডিলিট করতে চান?
             </DialogDescription>
           </DialogHeader>
+          <div className="bg-destructive/10 border border-destructive/20 rounded-lg p-4 text-sm">
+            <p className="font-medium text-destructive mb-2">⚠️ সতর্কতা: সমস্ত ডেটা ডিলিট হবে</p>
+            <ul className="text-sm text-destructive/80 space-y-1 ml-4 list-disc">
+              <li>সব প্রপার্টি</li>
+              <li>সব ভাড়াটিয়ার তথ্য</li>
+              <li>সব বিল ও ইনভয়েস</li>
+              <li>সব খরচের রেকর্ড</li>
+              <li>সব টিকেট</li>
+            </ul>
+            <p className="mt-3 font-medium">এই কাজ আন্ডু করা যাবে না।</p>
+          </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setActionDialog({ type: null })}>
               Cancel
@@ -842,7 +914,71 @@ export default function AdminUsersPage() {
               disabled={isProcessing}
             >
               {isProcessing ? <Spinner className="mr-2" /> : null}
-              ডিলিট করুন
+              স্থায়ীভাবে ডিলিট করুন
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Change Password Dialog */}
+      <Dialog
+        open={actionDialog.type === "change_password"}
+        onOpenChange={() => {
+          setActionDialog({ type: null });
+          setNewPassword("");
+          setShowPassword(false);
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>পাসওয়ার্ড পরিবর্তন করুন</DialogTitle>
+            <DialogDescription>
+              {selectedUser?.displayName} ({selectedUser?.email}) এর জন্য নতুন পাসওয়ার্ড সেট করুন
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <label className="text-sm font-medium">নতুন পাসওয়ার্ড</label>
+              <div className="flex gap-2">
+                <Input
+                  type={showPassword ? "text" : "password"}
+                  placeholder="কমপক্ষে ৬ অক্ষর"
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  disabled={isProcessing}
+                />
+                <Button
+                  variant="outline"
+                  size="icon"
+                  onClick={() => setShowPassword(!showPassword)}
+                  disabled={isProcessing}
+                >
+                  <Eye className="h-4 w-4" />
+                </Button>
+              </div>
+              {newPassword && newPassword.length < 6 && (
+                <p className="text-xs text-destructive">পাসওয়ার্ড কমপক্ষে ৬ অক্ষর হতে হবে</p>
+              )}
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setActionDialog({ type: null });
+                setNewPassword("");
+                setShowPassword(false);
+              }}
+              disabled={isProcessing}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleChangePassword}
+              disabled={isProcessing || !newPassword || newPassword.length < 6}
+            >
+              {isProcessing ? <Spinner className="mr-2" /> : null}
+              পাসওয়ার্ড পরিবর্তন করুন
             </Button>
           </DialogFooter>
         </DialogContent>

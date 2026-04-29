@@ -3,11 +3,15 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { useAuth } from "@/contexts/auth-context";
+import { databasePropertiesToTypescript } from "@/lib/supabase/propertyConverter";
+import { databaseTenantsToTypescript } from "@/lib/supabase/tenantConverter";
+import { databaseInvoicesToTypescript } from "@/lib/supabase/invoiceConverter";
+import { databaseTicketsToTypescript } from "@/lib/supabase/ticketConverter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Building2, Users, Receipt, AlertCircle, Ticket, TrendingUp, Zap } from "lucide-react";
+import { Building2, Users, Receipt, AlertCircle, Ticket, TrendingUp, Zap, DollarSign } from "lucide-react";
 import type { Property, Tenant, Invoice, Ticket as TicketType, DashboardStats } from "@/types";
 import { 
   demoProperties, 
@@ -21,6 +25,12 @@ export default function DashboardPage() {
   const { userData, isDemoUser, isAdmin } = useAuth();
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [recentInvoices, setRecentInvoices] = useState<Invoice[]>([]);
+  const [monthlyStats, setMonthlyStats] = useState<{
+    monthlyCollection: number;
+    monthlyExpense: number;
+    totalExpense: number;
+    yearlyCollection: number;
+  }>({ monthlyCollection: 0, monthlyExpense: 0, totalExpense: 0, yearlyCollection: 0 });
   const [loading, setLoading] = useState(true);
 
    useEffect(() => {
@@ -45,65 +55,98 @@ export default function DashboardPage() {
          const { data: properties, error: propertiesError } = await supabase
            .from("properties")
            .select("*")
-           .eq("ownerId", userData.id);
+           .eq("owner_id", userData.id);
 
          if (propertiesError) throw propertiesError;
+         const typedProperties = databasePropertiesToTypescript(properties as any || []);
 
          // Fetch tenants
          const { data: tenants, error: tenantsError } = await supabase
            .from("tenants")
            .select("*")
-           .eq("ownerId", userData.id);
+           .eq("owner_id", userData.id);
 
          if (tenantsError) throw tenantsError;
+         const typedTenants = databaseTenantsToTypescript(tenants as any || []);
 
          // Fetch invoices
          const { data: invoices, error: invoicesError } = await supabase
            .from("invoices")
            .select("*")
-           .eq("ownerId", userData.id);
+           .eq("owner_id", userData.id);
 
          if (invoicesError) throw invoicesError;
+         const typedInvoices = databaseInvoicesToTypescript(invoices as any || []);
+
+         // Fetch expenses
+         const { data: expenses, error: expensesError } = await supabase
+           .from("expenses")
+           .select("*")
+           .eq("owner_id", userData.id);
+
+         if (expensesError) throw expensesError;
 
          // Fetch tickets
          const { data: tickets, error: ticketsError } = await supabase
            .from("tickets")
            .select("*")
-           .eq("ownerId", userData.id);
+           .eq("owner_id", userData.id);
 
          if (ticketsError) throw ticketsError;
+         const typedTickets = databaseTicketsToTypescript(tickets as any || []);
 
          // Calculate stats
-         const totalRevenue = invoices
+         const totalRevenue = typedInvoices
            .filter((inv) => inv.status === "paid")
            .reduce((acc, inv) => acc + inv.paidAmount, 0);
 
-         const pendingPayments = invoices
+         const pendingPayments = typedInvoices
            .filter((inv) => inv.status === "unpaid" || inv.status === "partial")
            .reduce((acc, inv) => acc + inv.dueAmount, 0);
 
-         const overdueInvoices = invoices.filter(
+         const overdueInvoices = typedInvoices.filter(
            (inv) =>
              inv.status !== "paid" &&
              new Date(inv.dueDate) < new Date()
          ).length;
 
-         const openTickets = tickets.filter(
+         const openTickets = typedTickets.filter(
            (t) => t.status === "open" || t.status === "in-progress"
          ).length;
 
+         // Calculate monthly stats
+         const now = new Date();
+         const currentMonth = now.toISOString().slice(0, 7);
+
+         const monthlyCollection = typedInvoices
+           .filter((inv) => inv.status === "paid" && inv.paymentDate && inv.paymentDate.startsWith(currentMonth))
+           .reduce((acc, inv) => acc + inv.paidAmount, 0);
+
+         const monthlyExpense = (expenses || [])
+           .filter((exp: any) => exp.date.startsWith(currentMonth))
+           .reduce((acc, exp: any) => acc + exp.amount, 0);
+
+         const totalExpense = (expenses || []).reduce((acc, exp: any) => acc + exp.amount, 0);
+
          setStats({
-           totalProperties: properties?.length || 0,
-           totalTenants: tenants?.filter((t) => t.status === "active").length || 0,
+           totalProperties: typedProperties?.length || 0,
+           totalTenants: typedTenants?.filter((t) => t.status === "active").length || 0,
            totalRevenue,
            pendingPayments,
            openTickets,
            overdueInvoices,
          });
 
+         setMonthlyStats({
+           monthlyCollection,
+           monthlyExpense,
+           totalExpense,
+           yearlyCollection: totalRevenue,
+         });
+
          // Get recent invoices
          setRecentInvoices(
-           (invoices || [])
+           (typedInvoices || [])
              .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
              .slice(0, 5)
          );
@@ -115,7 +158,7 @@ export default function DashboardPage() {
      };
 
      fetchDashboardData();
-   }, [user, isDemoUser, isAdmin]);
+   }, [userData, isDemoUser, isAdmin]);
 
   if (loading) {
     return (
@@ -229,6 +272,53 @@ export default function DashboardPage() {
             </CardContent>
           </Card>
         ))}
+      </div>
+
+      {/* Monthly and Overall Stats */}
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">এই মাসের আদায়</CardTitle>
+            <TrendingUp className="h-4 w-4 text-success" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-success">৳{monthlyStats.monthlyCollection.toLocaleString()}</div>
+            <p className="text-xs text-muted-foreground">চলমান মাসে সংগৃহীত</p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">এই মাসের খরচ</CardTitle>
+            <AlertCircle className="h-4 w-4 text-warning" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-warning">৳{monthlyStats.monthlyExpense.toLocaleString()}</div>
+            <p className="text-xs text-muted-foreground">চলমান মাসে খরচ</p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">এই মাসের নেট আয়</CardTitle>
+            <TrendingUp className={`h-4 w-4 ${(monthlyStats.monthlyCollection - monthlyStats.monthlyExpense) >= 0 ? "text-success" : "text-destructive"}`} />
+          </CardHeader>
+          <CardContent>
+            <div className={`text-2xl font-bold ${(monthlyStats.monthlyCollection - monthlyStats.monthlyExpense) >= 0 ? "text-success" : "text-destructive"}`}>৳{(monthlyStats.monthlyCollection - monthlyStats.monthlyExpense).toLocaleString()}</div>
+            <p className="text-xs text-muted-foreground">মাসিক লাভ/ক্ষতি</p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">বার্ষিক নেট আয়</CardTitle>
+            <TrendingUp className={`h-4 w-4 ${(monthlyStats.yearlyCollection - monthlyStats.totalExpense) >= 0 ? "text-success" : "text-destructive"}`} />
+          </CardHeader>
+          <CardContent>
+            <div className={`text-2xl font-bold ${(monthlyStats.yearlyCollection - monthlyStats.totalExpense) >= 0 ? "text-success" : "text-destructive"}`}>৳{(monthlyStats.yearlyCollection - monthlyStats.totalExpense).toLocaleString()}</div>
+            <p className="text-xs text-muted-foreground">সারা বছরের লাভ/ক্ষতি</p>
+          </CardContent>
+        </Card>
       </div>
 
       {/* Recent Invoices */}

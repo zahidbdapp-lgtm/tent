@@ -2,7 +2,10 @@ import type { Metadata } from 'next'
 import { Geist, Geist_Mono } from 'next/font/google'
 import { Analytics } from '@vercel/analytics/next'
 import { AuthProvider } from '@/contexts/auth-context'
+import { LoadingProvider } from '@/contexts/loading-context'
 import { ThemeProvider } from '@/components/theme-provider'
+import { LoadingOverlay } from '@/components/loading-overlay'
+import { PageLoader } from '@/components/page-loader'
 import { Toaster } from '@/components/ui/sonner'
 import './globals.css'
 
@@ -41,10 +44,14 @@ export default function RootLayout({
      <html lang="en" className="bg-background" suppressHydrationWarning>
        <body className="font-sans antialiased" suppressHydrationWarning>
          <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
-           <AuthProvider>
-             {children}
-             <Toaster />
-           </AuthProvider>
+           <LoadingProvider>
+             <AuthProvider>
+               <PageLoader />
+               <LoadingOverlay />
+               {children}
+               <Toaster />
+             </AuthProvider>
+           </LoadingProvider>
          </ThemeProvider>
          {process.env.NODE_ENV === 'production' && <Analytics />}
        </body>
