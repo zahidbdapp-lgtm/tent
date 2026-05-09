@@ -1,4 +1,5 @@
 import { createServerClient } from "@supabase/ssr";
+import { createClient } from "@supabase/supabase-js";
 import { cookies } from "next/headers";
 import { NextRequest, NextResponse } from "next/server";
 
@@ -78,15 +79,29 @@ export async function POST(request: NextRequest) {
     // 5. Delete properties
     await supabase.from("properties").delete().eq("owner_id", userId);
 
-    // 6. Delete user
+    // 6. Delete user from database
     const { error: deleteError } = await supabase
       .from("users")
       .delete()
       .eq("id", userId);
 
     if (deleteError) {
-      console.error("Error deleting user:", deleteError);
+      console.error("Error deleting user from database:", deleteError);
       throw deleteError;
+    }
+
+    // 7. Delete user from authentication using admin API
+    const serviceRoleClient = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!
+    );
+
+    const { error: authDeleteError } = await serviceRoleClient.auth.admin.deleteUser(userId);
+
+    if (authDeleteError) {
+      console.error("Error deleting user from auth:", authDeleteError);
+      // Don't throw here - user is already deleted from database
+      // Just log the error
     }
 
     return NextResponse.json({

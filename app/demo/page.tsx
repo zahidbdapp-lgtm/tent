@@ -245,14 +245,23 @@ export default function DemoPage() {
                         <div>
                           <p className="font-medium text-sm">{invoice.tenantName}</p>
                           <p className="text-xs text-muted-foreground">{invoice.month} • Unit: {invoice.unitNumber}</p>
+                          {invoice.status === "partial" && (
+                            <p className="text-[10px] text-orange-600 font-medium mt-0.5">
+                              পরিশোধিত: ৳{invoice.paidAmount.toLocaleString()}
+                            </p>
+                          )}
                         </div>
                         <div className="text-right">
-                          <p className="font-semibold">৳{invoice.totalAmount.toLocaleString()}</p>
+                          <p className="font-semibold">
+                            ৳{(invoice.status === "paid" ? invoice.totalAmount : invoice.dueAmount).toLocaleString()}
+                          </p>
                           <Badge 
-                            variant={invoice.status === "paid" ? "default" : "secondary"}
-                            className="text-xs mt-1"
+                            variant={invoice.status === "paid" ? "default" : invoice.status === "partial" ? "outline" : "secondary"}
+                            className={`text-xs mt-1 ${
+                              invoice.status === "partial" ? "text-orange-600 border-orange-200 bg-orange-50" : ""
+                            }`}
                           >
-                            {invoice.status === "paid" ? "প্রদান" : "বকেয়া"}
+                            {invoice.status === "paid" ? "প্রদান" : invoice.status === "partial" ? "আংশিক" : "বকেয়া"}
                           </Badge>
                         </div>
                       </div>
@@ -312,7 +321,43 @@ export default function DemoPage() {
             </Card>
           )}
 
-          {currentSection !== "dashboard" && currentSection !== "properties" && currentSection !== "tenants" && (
+          {currentSection === "invoices" && (
+            <Card>
+              <CardHeader>
+                <CardTitle>বিল (Demo Data - Read-only)</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  {demoInvoices.map((invoice) => (
+                    <div key={invoice.id} className="p-4 border rounded-lg">
+                      <div className="flex items-start justify-between">
+                        <div>
+                          <h3 className="font-semibold">{invoice.tenantName}</h3>
+                          <p className="text-sm text-muted-foreground">{invoice.month}</p>
+                          <p className="text-xs text-muted-foreground">Unit: {invoice.unitNumber}</p>
+                        </div>
+                        <div className="text-right">
+                          <p className="font-semibold">৳{invoice.totalAmount.toLocaleString()}</p>
+                          <Badge 
+                            variant={invoice.status === "paid" ? "default" : invoice.status === "partial" ? "secondary" : "destructive"}
+                            className="text-xs mt-1"
+                          >
+                            {invoice.status === "paid" ? "প্রদান" : invoice.status === "partial" ? "আংশিক" : "বকেয়া"}
+                          </Badge>
+                        </div>
+                      </div>
+                      <div className="mt-2 text-xs text-muted-foreground">
+                        <p>Due Date: {new Date(invoice.dueDate).toLocaleDateString('bn-BD')}</p>
+                        <p>Paid: ৳{invoice.paidAmount.toLocaleString()} • Due: ৳{invoice.dueAmount.toLocaleString()}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {currentSection !== "dashboard" && currentSection !== "properties" && currentSection !== "tenants" && currentSection !== "invoices" && (
             <Card>
               <CardHeader>
                 <CardTitle>Demo Content</CardTitle>

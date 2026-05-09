@@ -40,21 +40,21 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode
 }>) {
-   return (
-     <html lang="en" className="bg-background" suppressHydrationWarning>
-       <body className="font-sans antialiased" suppressHydrationWarning>
-         <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
-           <LoadingProvider>
-             <AuthProvider>
-               <PageLoader />
-               <LoadingOverlay />
-               {children}
-               <Toaster />
-             </AuthProvider>
-           </LoadingProvider>
-         </ThemeProvider>
-         {process.env.NODE_ENV === 'production' && <Analytics />}
-       </body>
-     </html>
-   )
+  return (
+    <html lang="en" className="bg-background" suppressHydrationWarning>
+      <body className="font-sans antialiased" suppressHydrationWarning>
+         <ThemeProvider attribute="class" defaultTheme="light" enableSystem>
+          <LoadingProvider>
+            <AuthProvider>
+              <PageLoader />
+              <LoadingOverlay />
+              {children}
+              <Toaster />
+            </AuthProvider>
+          </LoadingProvider>
+        </ThemeProvider>
+        {process.env.NODE_ENV === 'production' && <Analytics />}
+      </body>
+    </html>
+  )
 }

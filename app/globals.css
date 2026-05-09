@@ -1,34 +1,64 @@
+/* ============================================================================
+   TAILWIND CSS & ANIMATION IMPORTS
+   ============================================================================ */
 @import 'tailwindcss';
 @import 'tw-animate-css';
 
+/* ============================================================================
+   CUSTOM VARIANTS
+   ============================================================================ */
 @custom-variant dark (&:is(.dark *));
 
+/* ============================================================================
+   CSS VARIABLES - LIGHT THEME (DEFAULT)
+   Uses OKLch color space for perceptually uniform colors
+   OKLch Format: oklch(lightness saturation hue)
+   ============================================================================ */
 :root {
+  /* Core Colors */
   --background: oklch(0.98 0 0);
   --foreground: oklch(0.15 0 0);
+
+  /* Card & Popover */
   --card: oklch(1 0 0);
   --card-foreground: oklch(0.15 0 0);
   --popover: oklch(1 0 0);
   --popover-foreground: oklch(0.15 0 0);
+
+  /* Primary Theme */
   --primary: oklch(0.55 0.15 250);
   --primary-foreground: oklch(0.98 0 0);
+
+  /* Secondary Theme */
   --secondary: oklch(0.95 0 0);
   --secondary-foreground: oklch(0.25 0 0);
+
+  /* Muted & Accents */
   --muted: oklch(0.95 0.01 250);
   --muted-foreground: oklch(0.50 0 0);
   --accent: oklch(0.92 0.02 250);
   --accent-foreground: oklch(0.25 0 0);
+
+  /* Destructive (Error/Delete Actions) */
   --destructive: oklch(0.55 0.20 25);
   --destructive-foreground: oklch(0.98 0 0);
+
+  /* Form Elements */
   --border: oklch(0.90 0 0);
   --input: oklch(0.90 0 0);
   --ring: oklch(0.55 0.15 250);
+
+  /* Chart Colors */
   --chart-1: oklch(0.55 0.15 250);
   --chart-2: oklch(0.65 0.18 160);
   --chart-3: oklch(0.70 0.15 45);
   --chart-4: oklch(0.60 0.20 300);
   --chart-5: oklch(0.58 0.22 25);
+
+  /* Border Radius */
   --radius: 0.5rem;
+
+  /* Sidebar */
   --sidebar: oklch(0.98 0 0);
   --sidebar-foreground: oklch(0.15 0 0);
   --sidebar-primary: oklch(0.55 0.15 250);
@@ -37,37 +67,60 @@
   --sidebar-accent-foreground: oklch(0.25 0 0);
   --sidebar-border: oklch(0.90 0 0);
   --sidebar-ring: oklch(0.55 0.15 250);
+
+  /* Status Colors */
   --success: oklch(0.60 0.18 145);
   --success-foreground: oklch(0.98 0 0);
   --warning: oklch(0.75 0.18 75);
   --warning-foreground: oklch(0.20 0 0);
 }
 
+/* ============================================================================
+   CSS VARIABLES - DARK THEME
+   Applied when .dark class is present on the html element
+   ============================================================================ */
 .dark {
+  /* Core Colors - Dark */
   --background: oklch(0.12 0.01 250);
   --foreground: oklch(0.95 0 0);
+
+  /* Card & Popover - Dark */
   --card: oklch(0.16 0.01 250);
   --card-foreground: oklch(0.95 0 0);
   --popover: oklch(0.16 0.01 250);
   --popover-foreground: oklch(0.95 0 0);
+
+  /* Primary Theme - Dark */
   --primary: oklch(0.65 0.18 250);
   --primary-foreground: oklch(0.12 0 0);
+
+  /* Secondary Theme - Dark */
   --secondary: oklch(0.22 0.01 250);
   --secondary-foreground: oklch(0.95 0 0);
+
+  /* Muted & Accents - Dark */
   --muted: oklch(0.22 0.01 250);
   --muted-foreground: oklch(0.65 0 0);
   --accent: oklch(0.25 0.02 250);
   --accent-foreground: oklch(0.95 0 0);
+
+  /* Destructive - Dark */
   --destructive: oklch(0.50 0.18 25);
   --destructive-foreground: oklch(0.95 0 0);
+
+  /* Form Elements - Dark */
   --border: oklch(0.25 0.01 250);
   --input: oklch(0.25 0.01 250);
   --ring: oklch(0.65 0.18 250);
+
+  /* Chart Colors - Dark */
   --chart-1: oklch(0.65 0.18 250);
   --chart-2: oklch(0.70 0.20 160);
   --chart-3: oklch(0.75 0.18 45);
   --chart-4: oklch(0.65 0.22 300);
   --chart-5: oklch(0.60 0.24 25);
+
+  /* Sidebar - Dark */
   --sidebar: oklch(0.14 0.01 250);
   --sidebar-foreground: oklch(0.95 0 0);
   --sidebar-primary: oklch(0.65 0.18 250);
@@ -76,43 +129,67 @@
   --sidebar-accent-foreground: oklch(0.95 0 0);
   --sidebar-border: oklch(0.25 0.01 250);
   --sidebar-ring: oklch(0.65 0.18 250);
+
+  /* Status Colors - Dark */
   --success: oklch(0.65 0.20 145);
   --success-foreground: oklch(0.12 0 0);
   --warning: oklch(0.78 0.18 75);
   --warning-foreground: oklch(0.15 0 0);
 }
 
+/* ============================================================================
+   TAILWIND THEME CONFIGURATION
+   Maps CSS variables to Tailwind color utilities
+   ============================================================================ */
 @theme inline {
   --font-sans: 'Geist', 'Geist Fallback';
   --font-mono: 'Geist Mono', 'Geist Mono Fallback';
+
+  /* Base Colors */
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+
+  /* Card & Popover */
   --color-card: var(--card);
   --color-card-foreground: var(--card-foreground);
   --color-popover: var(--popover);
   --color-popover-foreground: var(--popover-foreground);
+
+  /* Primary & Secondary */
   --color-primary: var(--primary);
   --color-primary-foreground: var(--primary-foreground);
   --color-secondary: var(--secondary);
   --color-secondary-foreground: var(--secondary-foreground);
+
+  /* Muted & Accent */
   --color-muted: var(--muted);
   --color-muted-foreground: var(--muted-foreground);
   --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
+
+  /* Destructive */
   --color-destructive: var(--destructive);
   --color-destructive-foreground: var(--destructive-foreground);
+
+  /* Form Elements */
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
+
+  /* Charts */
   --color-chart-1: var(--chart-1);
   --color-chart-2: var(--chart-2);
   --color-chart-3: var(--chart-3);
   --color-chart-4: var(--chart-4);
   --color-chart-5: var(--chart-5);
+
+  /* Border Radius */
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
+
+  /* Sidebar */
   --color-sidebar: var(--sidebar);
   --color-sidebar-foreground: var(--sidebar-foreground);
   --color-sidebar-primary: var(--sidebar-primary);
@@ -121,17 +198,24 @@
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
+
+  /* Status Colors */
   --color-success: var(--success);
   --color-success-foreground: var(--success-foreground);
   --color-warning: var(--warning);
   --color-warning-foreground: var(--warning-foreground);
 }
 
+/* ============================================================================
+   BASE STYLES
+   ============================================================================ */
 @layer base {
   * {
     @apply border-border outline-ring/50;
   }
+
   body {
     @apply bg-background text-foreground;
   }
 }
+

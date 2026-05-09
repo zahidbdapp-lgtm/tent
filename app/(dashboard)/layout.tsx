@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useTheme } from "next-themes";
 import { useAuth } from "@/contexts/auth-context";
 import {
   SidebarProvider,
@@ -51,6 +52,8 @@ import {
   Ban,
   Clock,
   FileText,
+  Moon,
+  Sun,
 } from "lucide-react";
 
 const navigation = [
@@ -205,6 +208,34 @@ export default function DashboardLayout({
     return <Badge variant="secondary" className="text-xs">Demo</Badge>;
   };
 
+  const ThemeToggleButton = () => {
+    const [mounted, setMounted] = useState(false);
+    const { theme, setTheme } = useTheme();
+
+    useEffect(() => {
+      setMounted(true);
+    }, []);
+
+    if (!mounted) return null;
+
+    return (
+      <Button
+        variant="ghost"
+        size="sm"
+        onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}
+        className="w-full justify-start"
+        title={`Switch to ${theme === 'light' ? 'dark' : 'light'} mode`}
+      >
+        {theme === 'light' ? (
+          <Moon className="h-4 w-4 mr-2" />
+        ) : (
+          <Sun className="h-4 w-4 mr-2" />
+        )}
+        {theme === 'light' ? 'Dark Mode' : 'Light Mode'}
+      </Button>
+    );
+  };
+
   return (
     <SidebarProvider>
       <Sidebar>
@@ -329,7 +360,8 @@ export default function DashboardLayout({
             </SidebarGroup>
           )}
         </SidebarContent>
-        <SidebarFooter className="border-t border-sidebar-border">
+        <SidebarFooter className="border-t border-sidebar-border space-y-2">
+          <ThemeToggleButton />
           <SidebarMenu>
             <SidebarMenuItem>
               <DropdownMenu>

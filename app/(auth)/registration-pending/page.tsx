@@ -72,11 +72,11 @@ export default function RegistrationPendingPage() {
               <div className="flex items-center gap-4 mt-2 text-sm">
                 <span className="flex items-center gap-1 text-muted-foreground">
                   <Mail className="h-3 w-3" />
-                  support@propmanager.com
+                  zahid@talukdaracademy.com.bd
                 </span>
                 <span className="flex items-center gap-1 text-muted-foreground">
                   <Phone className="h-3 w-3" />
-                  01XXXXXXXXX
+                  01727-132605
                 </span>
               </div>
             </div>

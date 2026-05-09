@@ -315,6 +315,12 @@ export default function AdminUsersPage() {
         body: JSON.stringify({ userId: selectedUser.id }),
       });
 
+      // Check if response is JSON
+      const contentType = response.headers.get("content-type");
+      if (!contentType || !contentType.includes("application/json")) {
+        throw new Error(`সার্ভার একটি অপ্রত্যাশিত প্রতিক্রিয়া পাঠিয়েছে। স্ট্যাটাস: ${response.status}`);
+      }
+
       const data = await response.json();
 
       if (!response.ok) {
@@ -324,6 +330,7 @@ export default function AdminUsersPage() {
       await fetchUsers();
       setActionDialog({ type: null });
       setSelectedUser(null);
+      alert("ইউজার এবং সব ডেটা সফলভাবে ডিলিট হয়েছে");
     } catch (error) {
       console.error("Error deleting user:", error);
       alert(error instanceof Error ? error.message : "ইউজার ডিলিট করতে সমস্যা হয়েছে");
